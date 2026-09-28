@@ -1,0 +1,84 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  STAFF
+  ADMIN
+}
+
+enum Department {
+  SALES
+  DEVELOPMENT
+  MARKETING
+}
+
+enum ReportStatus {
+  DRAFT
+  SUBMITTED
+}
+
+model User {
+  id           String        @id @default(cuid())
+  name         String
+  email        String        @unique
+  passwordHash String
+  role         Role          @default(STAFF)
+  department   Department?
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  reports      DailyReport[]
+  sessions     Session[]
+}
+
+// Server-side sessions: the cookie holds a random token, the DB holds its SHA-256.
+// Deleting the row (logout, deactivation, password reset) invalidates the session immediately.
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model DailyReport {
+  id                String       @id @default(cuid())
+  userId            String
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reportDate        DateTime     @db.Date
+  topPriorities     Json         @default("[]")
+  callsEmails       Json         @default("[]")
+  personalTodo      Json         @default("[]")
+  dailySchedules    Json         @default("[]")
+  officeIn          String?
+  officeOut         String?
+  breakMinutes      Int?
+  netOfficeHours    Decimal?     @db.Decimal(5, 2)
+  productivity      Int?
+  mood              Int?
+  health            Int?
+  tasks             Json         @default("[]")
+  totalPlannedHours Decimal      @default(0) @db.Decimal(6, 2)
+  totalWorkedHours  Decimal      @default(0) @db.Decimal(6, 2)
+  appointments      Json         @default("[]")
+  managerNote       String?
+  performanceIndex  Int?
+  reviewedAt        DateTime?
+  status            ReportStatus @default(DRAFT)
+  submittedAt       DateTime?
+  editableUntil     DateTime     @db.Date
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@unique([userId, reportDate])
+  @@index([reportDate])
+}

@@ -1,36 +1,60 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Employee Daily Planner
 
-## Getting Started
+Full-stack Next.js (App Router) app: staff fill in an A4-style daily planner; admins review reports and manage users.
+Next.js route handlers are the backend; data lives in Neon PostgreSQL via Prisma. Everyone signs in with **email + password**.
 
-First, run the development server:
+## Setup
+
+`.env.local` (not committed):
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Neon connection string used by the app (pooled is fine) |
+| `DIRECT_URL` | Neon **direct** (non-`-pooler`) connection string used by Prisma Migrate |
+| `APP_TIMEZONE` | Business timezone for "today" and the 7-day edit window (default `Asia/Kolkata`) |
+| `SEED_ADMIN_NAME` / `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | First admin account created by the seed |
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install            # also runs prisma generate
+npm run db:migrate     # prisma migrate dev (use db:deploy in production)
+npm run db:seed        # creates the first admin from SEED_ADMIN_* (idempotent)
+npm run dev            # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## First admin account
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Add these lines to `.env.local` and choose your own strong password (8+ characters):
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+   ```bash
+   SEED_ADMIN_NAME=Administrator
+   SEED_ADMIN_EMAIL=admin@your-domain.local
+   SEED_ADMIN_PASSWORD=<choose a strong password>
+   ```
 
-## Learn More
+2. Run `npx prisma db seed`. It creates the admin only if no user with that email exists yet, so running it again never
+   creates a duplicate and never changes an existing password.
+3. Open `/login`.
+4. Select the **Admin** tab.
+5. Sign in with the email from `SEED_ADMIN_EMAIL` and the password you set in `SEED_ADMIN_PASSWORD`.
 
-To learn more about Next.js, take a look at the following resources:
+Then create staff accounts under **User Management**. After first sign-in you can change the admin's email or password
+there (Edit); the seed values are only used when the account is first created. Changing `SEED_ADMIN_EMAIL` later and
+re-seeding creates a *new* admin with that email — rename the existing one in User Management instead.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Rules worth knowing
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- One report per staff member per date — enforced by `UNIQUE(userId, reportDate)`; saves are upserts.
+- Staff can edit a report until `editableUntil = reportDate + 7 days` (checked server-side), and plan up to 7 days ahead.
+- Drafts autosave; submitted reports change only via **Update Daily Report**.
+- Manager Note and Performance Index are admin-only (`PATCH /api/reports/:id`).
+- Sessions are server-side (`Session` table). Logout ends the session; deactivation and password changes sign the
+  account out everywhere else. The session cookie is `Secure` in production, so serve the app over HTTPS.
+- Emails are unique and stored lower-case.
 
-## Deploy on Vercel
+## Checks
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run lint
+npx prisma validate && npx prisma migrate status
+npm run build
+```

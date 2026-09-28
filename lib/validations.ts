@@ -84,29 +84,74 @@ export type UpdateUserInput = z.input<typeof updateUserSchema>;
 
 export const isoDateSchema = z.string().refine(isValidISODate, "Invalid date.");
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Invalid time.");
-const text = z.string().trim().max(500, "Text is too long (500 characters max).");
+/**
+ * The planner is one printed A4 page, so every repeatable section has a fixed number of rows
+ * (measured against the rendered sheet) and each row a text limit (two printed lines in the
+ * narrow column). The UI hides "+ Add" at the limit; these schemas enforce it for any client.
+ */
+export const ROW_LIMITS = {
+  topPriorities: 3,
+  callsEmails: 4,
+  personalTodo: 4,
+  dailySchedules: 4,
+  tasks: 8,
+  appointments: 4,
+} as const;
+export const ROW_TEXT_MAX = 100;
+export const MANAGER_NOTE_MAX = 600;
+
+export const SECTION_LABELS: Record<keyof typeof ROW_LIMITS, string> = {
+  topPriorities: "Top Priorities",
+  callsEmails: "Communications",
+  personalTodo: "Personal To Do List",
+  dailySchedules: "Daily Schedules",
+  tasks: "To Do List",
+  appointments: "Appointments",
+};
+
+/** Communications replace the old Calls / Emails list and reuse its JSON column (callsEmails). */
+export const COMMUNICATION_TYPES = ["CALL", "EMAIL", "DIRECT_MEETING"] as const;
+export type CommunicationType = (typeof COMMUNICATION_TYPES)[number];
+export const COMMUNICATION_LABELS: Record<CommunicationType, string> = {
+  CALL: "Call",
+  EMAIL: "Email",
+  DIRECT_MEETING: "Direct Meeting",
+};
+
+const text = z.string().trim().max(ROW_TEXT_MAX, `Text is too long (${ROW_TEXT_MAX} characters max).`);
 const hours = z
   .number("Hours must be a number.")
   .min(0, "Hours cannot be negative.")
   .max(24, "Hours cannot exceed 24.")
   .nullable();
 const rating = z.number().int().min(1, "Ratings are 1–5.").max(5, "Ratings are 1–5.").nullable();
-const list = <T extends z.ZodType>(item: T) => z.array(item).max(50, "A list can have at most 50 rows.");
+const list = <T extends z.ZodType>(item: T, section: keyof typeof ROW_LIMITS) =>
+  z.array(item).max(ROW_LIMITS[section], `${SECTION_LABELS[section]}: at most ${ROW_LIMITS[section]} rows.`);
 
 const checkItem = z.object({ text, done: z.boolean() });
 const scheduleItem = z.object({ time: time.or(z.literal("")), text });
 const taskItem = z.object({ text, done: z.boolean(), planned: hours, worked: hours });
+// time is optional so appointments saved before it existed stay valid.
+const appointmentItem = z.object({ text, done: z.boolean(), time: time.or(z.literal("")).optional() });
+// Rows saved as the old Calls / Emails list have no type (and a done flag, kept as-is).
+const communicationItem = z.object({
+  type: z.enum(COMMUNICATION_TYPES).or(z.literal("")).optional(),
+  text,
+  done: z.boolean().optional(),
+});
 
 export type CheckItem = z.infer<typeof checkItem>;
 export type ScheduleItem = z.infer<typeof scheduleItem>;
 export type TaskItem = z.infer<typeof taskItem>;
+export type AppointmentItem = z.infer<typeof appointmentItem>;
+export type CommunicationItem = z.infer<typeof communicationItem>;
 
 export const reportContentSchema = z
   .object({
-    topPriorities: list(checkItem),
-    callsEmails: list(checkItem),
-    personalTodo: list(checkItem),
-    dailySchedules: list(scheduleItem),
+    topPriorities: list(checkItem, "topPriorities"),
+    callsEmails: list(communicationItem, "callsEmails"),
+    personalTodo: list(checkItem, "personalTodo"),
+    dailySchedules: list(scheduleItem, "dailySchedules"),
     officeIn: time.nullable(),
     officeOut: time.nullable(),
     breakMinutes: z
@@ -118,12 +163,18 @@ export const reportContentSchema = z
     productivity: rating,
     mood: rating,
     health: rating,
-    tasks: list(taskItem),
-    appointments: list(checkItem),
+    tasks: list(taskItem, "tasks"),
+    appointments: list(appointmentItem, "appointments"),
   })
   .superRefine((v, ctx) => {
     const { error } = calcNetOfficeHours(v.officeIn, v.officeOut, v.breakMinutes);
     if (error) ctx.addIssue({ code: "custom", path: ["officeOut"], message: error });
+    // A written communication must say what kind it is.
+    v.callsEmails.forEach((c, i) => {
+      if (c.text !== "" && !c.type) {
+        ctx.addIssue({ code: "custom", path: ["callsEmails", i, "type"], message: "Choose Call, Email or Direct Meeting." });
+      }
+    });
   });
 
 export type ReportContent = z.infer<typeof reportContentSchema>;
@@ -138,7 +189,7 @@ export const reviewSchema = z.object({
   managerNote: z
     .string()
     .trim()
-    .max(2000, "Manager note is too long (2000 characters max).")
+    .max(MANAGER_NOTE_MAX, `Manager note is too long (${MANAGER_NOTE_MAX} characters max).`)
     .transform((v) => v || null)
     .nullable(),
   performanceIndex: rating,

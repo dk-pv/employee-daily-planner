@@ -7,27 +7,59 @@ import type { z } from "zod";
 import { Alert, btnPrimary, btnSecondary, ReportStatusBadge } from "@/components/ui/ui";
 import type { PlannerReport } from "@/lib/reports";
 import { departmentLabel, formatDate, formatDateTime, isValidISODate } from "@/lib/utils";
-import { reportContentSchema, type ReportContent } from "@/lib/validations";
-import { CheckList, OfficeHours, ScheduleList, Scale, Section, TaskTable, type FormValues } from "./parts";
+import {
+  COMMUNICATION_TYPES,
+  MANAGER_NOTE_MAX,
+  reportContentSchema,
+  ROW_LIMITS,
+  SECTION_LABELS,
+  type ReportContent,
+} from "@/lib/validations";
+import {
+  AppointmentList,
+  CheckList,
+  CommunicationsTable,
+  OfficeHours,
+  ScheduleList,
+  Scale,
+  Section,
+  TaskTable,
+  type CommunicationRow,
+  type FormValues,
+} from "./parts";
 
-// Blank rows shown on a fresh sheet, like the printed planner. Users add more as needed.
-const MIN_ROWS = { topPriorities: 4, callsEmails: 4, personalTodo: 4, appointments: 3, dailySchedules: 6, tasks: 6 };
+// Blank rows on a fresh sheet (each section can grow to ROW_LIMITS, never beyond).
+const START_ROWS = { topPriorities: 3, callsEmails: 3, personalTodo: 3, dailySchedules: 3, tasks: 6, appointments: 3 };
 
 function pad<T>(rows: T[], min: number, blank: () => T) {
   return [...rows, ...Array.from({ length: Math.max(0, min - rows.length) }, blank)];
 }
 
+/** Saved communications first; a fresh sheet starts with one Call, one Email and one Direct Meeting row. */
+function communicationRows(saved: ReportContent["callsEmails"]): CommunicationRow[] {
+  // Rows saved as the old Calls / Emails list have no type: shown as "Choose type…", nothing is guessed.
+  const rows: CommunicationRow[] = saved.map((c) => ({ type: c.type ?? "", text: c.text, done: c.done ?? false }));
+  for (const type of COMMUNICATION_TYPES) {
+    if (rows.length < START_ROWS.callsEmails && !rows.some((r) => r.type === type)) rows.push({ type, text: "", done: false });
+  }
+  return rows;
+}
+
 function toFormValues(c: ReportContent | null): FormValues {
   const check = () => ({ text: "", done: false });
   return {
-    topPriorities: pad(c?.topPriorities ?? [], MIN_ROWS.topPriorities, check),
-    callsEmails: pad(c?.callsEmails ?? [], MIN_ROWS.callsEmails, check),
-    personalTodo: pad(c?.personalTodo ?? [], MIN_ROWS.personalTodo, check),
-    appointments: pad(c?.appointments ?? [], MIN_ROWS.appointments, check),
-    dailySchedules: pad(c?.dailySchedules ?? [], MIN_ROWS.dailySchedules, () => ({ time: "", text: "" })),
+    topPriorities: pad(c?.topPriorities ?? [], START_ROWS.topPriorities, check),
+    callsEmails: communicationRows(c?.callsEmails ?? []),
+    personalTodo: pad(c?.personalTodo ?? [], START_ROWS.personalTodo, check),
+    appointments: pad(
+      (c?.appointments ?? []).map((a) => ({ text: a.text, done: a.done, time: a.time ?? "" })),
+      START_ROWS.appointments,
+      () => ({ text: "", done: false, time: "" }),
+    ),
+    dailySchedules: pad(c?.dailySchedules ?? [], START_ROWS.dailySchedules, () => ({ time: "", text: "" })),
     tasks: pad(
       (c?.tasks ?? []).map((t) => ({ ...t, planned: t.planned?.toString() ?? "", worked: t.worked?.toString() ?? "" })),
-      MIN_ROWS.tasks,
+      START_ROWS.tasks,
       () => ({ text: "", done: false, planned: "", worked: "" }),
     ),
     officeIn: c?.officeIn ?? "",
@@ -52,12 +84,7 @@ function toContent(v: FormValues): ReportContent {
 }
 
 const SECTION_NAMES: Record<string, string> = {
-  topPriorities: "Top Priorities",
-  callsEmails: "Calls / Emails",
-  personalTodo: "Personal To Do List",
-  appointments: "Appointments",
-  dailySchedules: "Daily Schedules",
-  tasks: "To Do List",
+  ...SECTION_LABELS,
   officeIn: "Office Hours",
   officeOut: "Office Hours",
   breakMinutes: "Office Hours",
@@ -70,8 +97,17 @@ function describeIssue(error: z.ZodError) {
   const issue = error.issues[0];
   const [key, row] = issue.path;
   const where = SECTION_NAMES[String(key)];
+  if (!where || issue.message.startsWith(where)) return issue.message;
   const rowText = typeof row === "number" ? `, row ${row + 1}` : "";
-  return where ? `${where}${rowText}: ${issue.message}` : issue.message;
+  return `${where}${rowText}: ${issue.message}`;
+}
+
+/** Sections holding more rows than the A4 sheet allows (only possible for reports saved before the limits). */
+function rowsOverLimit(c: ReportContent | null) {
+  if (!c) return [];
+  return (Object.keys(ROW_LIMITS) as (keyof typeof ROW_LIMITS)[])
+    .filter((key) => c[key].length > ROW_LIMITS[key])
+    .map((key) => `${SECTION_LABELS[key]} ${c[key].length}/${ROW_LIMITS[key]}`);
 }
 
 type Notice = { tone: "success" | "error"; text: string } | null;
@@ -95,6 +131,7 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
   const submitted = report?.status === "SUBMITTED";
   // Drafts autosave; a submitted report changes only when the employee clicks Update.
   const autosave = !readOnly && !submitted;
+  const [overLimit] = useState(() => rowsOverLimit(initialReport?.content ?? null));
 
   const { control, register, getValues, subscribe } = useForm<FormValues>({
     defaultValues: toFormValues(initialReport?.content ?? null),
@@ -170,26 +207,29 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
     };
   }, [subscribe, readOnly, markChanged]);
 
-  // ---- Admin review (Manager Note + Performance Index) ----
-  const [managerNote, setManagerNote] = useState(initialReport?.managerNote ?? "");
-  const [performance, setPerformance] = useState<number | null>(initialReport?.performanceIndex ?? null);
+  // ---- Admin review (Manager Note + Performance Index): admin payloads only, never rendered for staff ----
+  const [managerNote, setManagerNote] = useState(initialReport?.review?.managerNote ?? "");
+  const [performance, setPerformance] = useState<number | null>(initialReport?.review?.performanceIndex ?? null);
   const [reviewSaving, setReviewSaving] = useState(false);
   const reviewDirty =
-    isAdmin && (managerNote.trim() !== (report?.managerNote ?? "") || performance !== (report?.performanceIndex ?? null));
+    isAdmin &&
+    (managerNote.trim() !== (report?.review?.managerNote ?? "") || performance !== (report?.review?.performanceIndex ?? null));
 
   async function saveReview() {
     if (!report) return;
     setReviewSaving(true);
+    const sent = managerNote;
     try {
       const res = await fetch(`/api/reports/${report.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ managerNote, performanceIndex: performance }),
+        body: JSON.stringify({ managerNote: sent, performanceIndex: performance }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? "Could not save the review.");
       setReport(body.report);
-      setManagerNote(body.report.managerNote ?? "");
+      // Keep anything typed while the save was in flight.
+      setManagerNote((current) => (current === sent ? (body.report.review?.managerNote ?? "") : current));
       setNotice({ tone: "success", text: body.message });
     } catch (e) {
       setNotice({ tone: "error", text: e instanceof Error ? e.message : "Could not save the review." });
@@ -238,28 +278,41 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
             ? "Saved"
             : null;
 
+  const lists = { control, register, readOnly, onRowsChange: markChanged };
+
   return (
-    <div className="mx-auto w-full max-w-[820px] px-4 pb-28 pt-4 sm:px-6 print:max-w-none print:p-0">
+    <div className="mx-auto w-full max-w-[948px] px-4 pb-28 pt-4 sm:px-6 print:max-w-none print:p-0">
       <div className="mb-3 space-y-2 print:hidden">
+        {isAdmin && <p className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">Staff report · read-only</p>}
         {!isAdmin && lockReason && (
           <Alert tone="warning">{report ? lockReason : `No report found for this date. ${lockReason}`}</Alert>
         )}
         {!isAdmin && !lockReason && !report && (
           <Alert>New report — nothing has been saved for {formatDate(date)} yet. Rows are optional; fill in what applies.</Alert>
         )}
+        {!readOnly && overLimit.length > 0 && (
+          <Alert tone="warning">
+            This report was started before the one-page limits and has more rows than the A4 planner allows ({overLimit.join(", ")}).
+            Nothing has been removed — delete the extra rows you no longer need, then it can be saved.
+          </Alert>
+        )}
       </div>
 
+      {/*
+        One A4 page. On desktop the sheet keeps A4 proportions (900 × 1273 px) and every section has a
+        fixed maximum number of rows, so the content always fits. Printed, it is exactly one A4 page.
+      */}
       <article
         aria-busy={navigating}
-        className={`rounded-sm bg-white p-4 shadow-sm ring-1 ring-neutral-200 transition-opacity sm:p-7 print:p-0 print:shadow-none print:ring-0 ${
+        className={`rounded-sm bg-white p-4 shadow-sm ring-1 ring-neutral-200 transition-opacity sm:p-6 lg:mx-auto lg:flex lg:min-h-[1273px] lg:w-[900px] lg:flex-col print:flex print:min-h-[295mm] print:w-full print:flex-col print:rounded-none print:p-[8mm] print:shadow-none print:ring-0 ${
           navigating ? "opacity-50" : ""
         }`}
       >
-        <header className="mb-4 print:mb-2">
-          <h1 className="text-center text-2xl font-extrabold tracking-[0.3em] text-neutral-900 sm:text-3xl print:text-xl">
+        <header className="mb-3 print:mb-2">
+          <h1 className="text-center text-2xl font-extrabold tracking-[0.3em] text-neutral-900 sm:text-[28px] print:text-xl">
             DAILY PLANNER
           </h1>
-          <div className="mt-4 grid gap-3 sm:grid-cols-[1.3fr_1fr_1fr] print:mt-2 print:grid-cols-[1.3fr_1fr_1fr]">
+          <div className="mt-3 grid gap-3 sm:grid-cols-[1.3fr_1fr_1fr] print:mt-2 print:grid-cols-[1.3fr_1fr_1fr]">
             <HeaderField label="EMPLOYEE">{employee.name}</HeaderField>
             <HeaderField label="DEPARTMENT">{departmentLabel(employee.department)}</HeaderField>
             <HeaderField label="DATE">
@@ -282,43 +335,15 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
           </div>
         </header>
 
-        <div className="grid gap-3 md:grid-cols-[34%_minmax(0,1fr)] print:grid-cols-[34%_minmax(0,1fr)] print:gap-2">
-          <div className="flex min-w-0 flex-col gap-3 print:gap-2">
-            <Section title="TOP PRIORITIES" disabled={readOnly}>
-              <CheckList
-                {...{ control, register, readOnly }}
-                onRowsChange={markChanged}
-                name="topPriorities"
-                itemLabel="Priority"
-                addLabel="Add Priority"
-                numbered
-              />
-            </Section>
-            <Section title="CALLS / EMAILS" disabled={readOnly}>
-              <CheckList
-                {...{ control, register, readOnly }}
-                onRowsChange={markChanged}
-                name="callsEmails"
-                itemLabel="Call / email"
-                addLabel="Add Call / Email"
-              />
-            </Section>
-            <Section title="PERSONAL TO DO LIST" disabled={readOnly}>
-              <CheckList
-                {...{ control, register, readOnly }}
-                onRowsChange={markChanged}
-                name="personalTodo"
-                itemLabel="To-do"
-                addLabel="Add To Do"
-              />
-            </Section>
-            <Section title="DAILY SCHEDULES" disabled={readOnly} className="flex-1">
-              <ScheduleList {...{ control, register, readOnly }} onRowsChange={markChanged} />
-            </Section>
+        <div className="grid gap-2.5 md:grid-cols-[34%_minmax(0,1fr)] lg:flex-1 print:flex-1 print:grid-cols-[34%_minmax(0,1fr)] print:gap-2">
+          <div className="flex min-w-0 flex-col gap-2.5 print:gap-2">
+            <CheckList {...lists} name="topPriorities" title="TOP PRIORITIES" itemLabel="Priority" numbered />
+            <CheckList {...lists} name="personalTodo" title="PERSONAL TO DO LIST" itemLabel="To-do" />
+            <ScheduleList {...lists} className="flex-1" />
           </div>
 
-          <div className="flex min-w-0 flex-col gap-3 print:gap-2">
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] print:grid-cols-2 print:gap-2">
+          <div className="flex min-w-0 flex-col gap-2.5 print:gap-2">
+            <div className="grid gap-2.5 lg:grid-cols-[minmax(0,1fr)_auto] print:grid-cols-2 print:gap-2">
               <Section title="OFFICE HOURS TRACKER" disabled={readOnly}>
                 <OfficeHours control={control} register={register} />
               </Section>
@@ -337,64 +362,69 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
                 </div>
               </Section>
             </div>
-
-            <Section title="TO DO LIST — TASK + PLANNED HOURS + WORKED HOURS" disabled={readOnly}>
-              <TaskTable {...{ control, register, readOnly }} onRowsChange={markChanged} />
-            </Section>
-
-            <Section title="APPOINTMENTS" disabled={readOnly}>
-              <CheckList
-                {...{ control, register, readOnly }}
-                onRowsChange={markChanged}
-                name="appointments"
-                itemLabel="Appointment"
-                addLabel="Add Appointment"
-                round
-              />
-            </Section>
-
-            <Section title="MANAGER NOTE" disabled={!isAdmin}>
-              {isAdmin ? (
-                <>
-                  <textarea
-                    value={managerNote}
-                    onChange={(e) => setManagerNote(e.target.value)}
-                    maxLength={2000}
-                    rows={4}
-                    aria-label="Manager note"
-                    placeholder="Add feedback for the employee…"
-                    className={`${ruled} w-full resize-y border-0 px-0.5 focus:outline-none print:hidden`}
-                  />
-                  <p className={`${ruled} hidden whitespace-pre-wrap print:block`}>{managerNote}</p>
-                </>
-              ) : (
-                <p className={`${ruled} min-h-24 whitespace-pre-wrap px-0.5 print:min-h-12`}>
-                  {report?.managerNote || (
-                    <span className="text-neutral-400 print:hidden">Your manager has not added a note yet.</span>
-                  )}
-                </p>
-              )}
-            </Section>
-
-            <Section title="PERFORMANCE INDEX" disabled={!isAdmin}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <Scale
-                  label="Performance index"
-                  value={isAdmin ? performance : (report?.performanceIndex ?? null)}
-                  onChange={setPerformance}
-                  size="lg"
-                />
-                <span className="text-xs text-neutral-500 print:hidden">
-                  {isAdmin ? "Set by manager" : "Set by your manager after review"}
-                </span>
-              </div>
-            </Section>
+            <CommunicationsTable {...lists} />
+            <TaskTable {...lists} />
+            <AppointmentList {...lists} className="flex-1" />
           </div>
         </div>
+
+        {/* Manager Note + Performance Index are admin-owned: never rendered for staff. Inside the sheet so it prints on the same page. */}
+        {isAdmin && report && (
+          <section
+            aria-labelledby="manager-review-title"
+            className="mt-2.5 break-inside-avoid rounded-lg border-2 border-neutral-900 px-3 py-2.5 print:mt-2 print:border print:px-2.5 print:py-1.5"
+          >
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <h2 id="manager-review-title" className="text-[12px] font-extrabold tracking-[0.2em] text-neutral-900 print:text-[9.5px]">
+                MANAGER REVIEW
+              </h2>
+              <p className="text-xs text-neutral-500 print:hidden">
+                {report.review?.reviewedAt ? `Last saved ${formatDateTime(report.review.reviewedAt, timeZone)}` : "Not reviewed yet"} · not
+                shown to staff
+              </p>
+            </div>
+            <div className="mt-2 grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] print:mt-1 print:grid-cols-[minmax(0,1fr)_auto] print:gap-3">
+              <div className="min-w-0">
+                <label
+                  htmlFor="manager-note"
+                  className="block text-[10px] font-bold tracking-[0.14em] text-neutral-600 print:text-[8.5px]"
+                >
+                  MANAGER NOTE
+                </label>
+                <textarea
+                  id="manager-note"
+                  value={managerNote}
+                  onChange={(e) => setManagerNote(e.target.value)}
+                  readOnly={reviewSaving}
+                  maxLength={MANAGER_NOTE_MAX}
+                  rows={3}
+                  placeholder="Write feedback for this report…"
+                  className={`${ruled} mt-1 w-full resize-none rounded-sm border-0 px-1.5 focus:bg-neutral-50 focus:outline-none focus-visible:ring-1 focus-visible:ring-neutral-900 print:hidden`}
+                />
+                {/* On paper: compact lines (no ruling) so even a full 600-character note stays on the one A4 page. */}
+                <p className={`${ruled} mt-0.5 hidden min-h-8 whitespace-pre-wrap print:block print:bg-none print:leading-snug`}>
+                  {managerNote}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold tracking-[0.14em] text-neutral-600 print:text-[8.5px]">PERFORMANCE INDEX</p>
+                <div className="mt-1.5">
+                  <Scale label="Performance index" value={performance} onChange={setPerformance} disabled={reviewSaving} size="lg" />
+                </div>
+                <div className="mt-2.5 flex items-center justify-end gap-3 print:hidden">
+                  {reviewDirty && <span className="text-xs text-neutral-500">Unsaved changes</span>}
+                  <button type="button" onClick={() => void saveReview()} disabled={!reviewDirty || reviewSaving} className={btnPrimary}>
+                    {reviewSaving ? "Saving…" : "Save Review"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
       </article>
 
       <div className="fixed inset-x-0 bottom-0 z-10 border-t border-neutral-200 bg-white/95 backdrop-blur print:hidden">
-        <div className="mx-auto flex max-w-[820px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2.5 sm:px-6">
+        <div className="mx-auto flex max-w-[948px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2.5 sm:px-6">
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             {/* Messages live in the fixed bar so they are seen wherever the user has scrolled. */}
             {notice && (
@@ -409,7 +439,7 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
               <ReportStatusBadge status={report?.status ?? null} />
               {report && <span>Last updated: {formatDateTime(report.updatedAt, timeZone)}</span>}
               {!isAdmin && report && !lockReason && <span>Editable until {formatDate(report.editableUntil)}</span>}
-              {isAdmin && report?.reviewedAt && <span>Reviewed: {formatDateTime(report.reviewedAt, timeZone)}</span>}
+              {isAdmin && report?.review?.reviewedAt && <span>Reviewed: {formatDateTime(report.review.reviewedAt, timeZone)}</span>}
               {!readOnly && saveLabel && (
                 <span className={saveState === "error" ? "font-medium text-red-700" : "text-neutral-500"}>{saveLabel}</span>
               )}
@@ -421,28 +451,13 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
               Print
             </button>
             {!readOnly && !submitted && (
-              <button
-                type="button"
-                onClick={() => void save("draft", true)}
-                disabled={saveState === "saving"}
-                className={btnSecondary}
-              >
+              <button type="button" onClick={() => void save("draft", true)} disabled={saveState === "saving"} className={btnSecondary}>
                 Save Draft
               </button>
             )}
             {!readOnly && (
               <button type="button" onClick={() => void onSubmit()} disabled={saveState === "saving"} className={btnPrimary}>
                 {submitted ? "UPDATE DAILY REPORT" : "SUBMIT DAILY REPORT"}
-              </button>
-            )}
-            {isAdmin && (
-              <button
-                type="button"
-                onClick={() => void saveReview()}
-                disabled={!reviewDirty || reviewSaving}
-                className={btnPrimary}
-              >
-                {reviewSaving ? "Saving…" : "Save Review"}
               </button>
             )}
           </div>

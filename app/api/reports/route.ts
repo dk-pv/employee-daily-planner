@@ -73,5 +73,6 @@ export async function POST(request: Request) {
     : existing?.status === "SUBMITTED"
       ? "Report updated successfully."
       : "Report submitted successfully.";
-  return NextResponse.json({ report: serializeReport(report), message });
+  // Staff never receive the manager's note or performance index.
+  return NextResponse.json({ report: serializeReport(report, { withReview: false }), message });
 }

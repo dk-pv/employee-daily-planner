@@ -20,7 +20,7 @@ export default async function PlannerPage({ searchParams }: PageProps<"/">) {
   return (
     <>
       <header className="border-b border-neutral-200 bg-white print:hidden">
-        <div className="mx-auto flex max-w-[820px] items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
+        <div className="mx-auto flex max-w-[948px] items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
           <p className="text-sm font-bold tracking-[0.12em] text-neutral-900">DAILY PLANNER</p>
           <div className="flex min-w-0 items-center gap-3">
             <p className="min-w-0 truncate text-right text-xs text-neutral-600">
@@ -37,7 +37,7 @@ export default async function PlannerPage({ searchParams }: PageProps<"/">) {
           mode="staff"
           employee={{ name: user.name, department: user.department }}
           date={date}
-          report={report ? serializeReport(report) : null}
+          report={report ? serializeReport(report, { withReview: false }) : null}
           lockReason={lockReason}
           timeZone={process.env.APP_TIMEZONE || "Asia/Kolkata"}
         />

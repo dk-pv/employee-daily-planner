@@ -21,5 +21,5 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/reports/[i
     // Keep updatedAt as the employee's last edit; the review has its own timestamp.
     data: { ...parsed.data, reviewedAt: new Date(), updatedAt: current.updatedAt },
   });
-  return NextResponse.json({ report: serializeReport(report), message: "Review saved successfully." });
+  return NextResponse.json({ report: serializeReport(report, { withReview: true }), message: "Review saved successfully." });
 }

@@ -76,10 +76,39 @@ export function formatDateTime(date: Date | string, timeZone = process.env.APP_T
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: true, // same 12-hour style as the planner's time pickers
     timeZone,
   })
     .format(new Date(date))
-    .replace("Sept", "Sep");
+    .replace("Sept", "Sep")
+    .replace(/\b(am|pm)\b/, (period) => period.toUpperCase());
+}
+
+// ---------------------------------------------------------------------------
+// 12-hour clock. Times are stored as 24-hour "HH:MM"; only the UI shows AM/PM.
+// ---------------------------------------------------------------------------
+
+export type Time12 = { hour: string; minute: string; period: "" | "AM" | "PM" };
+
+/** "15:39" -> { hour: "03", minute: "39", period: "PM" }; "" -> nothing chosen. */
+export function to12h(value: string | null | undefined): Time12 {
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value ?? "");
+  if (!m) return { hour: "", minute: "", period: "" };
+  const h = Number(m[1]);
+  return { hour: String(h % 12 || 12).padStart(2, "0"), minute: m[2], period: h < 12 ? "AM" : "PM" };
+}
+
+/** Complete 12-hour parts -> stored "HH:MM" (12 AM = 00, 12 PM = 12); incomplete -> "". */
+export function from12h({ hour, minute, period }: Time12) {
+  if (!hour || !minute || !period) return "";
+  const h = (Number(hour) % 12) + (period === "PM" ? 12 : 0);
+  return `${String(h).padStart(2, "0")}:${minute}`;
+}
+
+/** "15:39" -> "03:39 PM"; empty/invalid -> "". */
+export function formatTime12(value: string | null | undefined) {
+  const t = to12h(value);
+  return t.period ? `${t.hour}:${t.minute} ${t.period}` : "";
 }
 
 // ---------------------------------------------------------------------------

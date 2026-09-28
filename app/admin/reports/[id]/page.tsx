@@ -20,7 +20,7 @@ export default async function ReportReviewPage({ params }: PageProps<"/admin/rep
 
   return (
     <>
-      <div className="mx-auto flex max-w-[820px] flex-wrap items-center justify-between gap-2 px-4 pt-5 sm:px-6 print:hidden">
+      <div className="mx-auto flex max-w-[948px] flex-wrap items-center justify-between gap-2 px-4 pt-5 sm:px-6 print:hidden">
         <Link href="/admin" className="text-sm font-medium text-neutral-600 hover:text-neutral-900">
           ← Back to reports
         </Link>
@@ -32,7 +32,7 @@ export default async function ReportReviewPage({ params }: PageProps<"/admin/rep
         mode="admin"
         employee={report.user}
         date={isoFromDate(report.reportDate)}
-        report={serializeReport(report)}
+        report={serializeReport(report, { withReview: true })}
         lockReason={null}
         timeZone={process.env.APP_TIMEZONE || "Asia/Kolkata"}
       />

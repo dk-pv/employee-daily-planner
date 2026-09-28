@@ -1,7 +1,7 @@
 import "server-only";
 import type { DailyReport } from "@/generated/prisma/client";
 import { addDaysISO, EDIT_WINDOW_DAYS, isoFromDate, todayISO } from "./utils";
-import type { CheckItem, ReportContent, ScheduleItem, TaskItem } from "./validations";
+import type { AppointmentItem, CheckItem, CommunicationItem, ReportContent, ScheduleItem, TaskItem } from "./validations";
 
 export type PlannerReport = {
   id: string;
@@ -14,13 +14,15 @@ export type PlannerReport = {
   netOfficeHours: number | null;
   totalPlannedHours: number;
   totalWorkedHours: number;
-  managerNote: string | null;
-  performanceIndex: number | null;
-  reviewedAt: string | null;
+  /** Manager review: present only in admin payloads — never sent to staff. */
+  review?: { managerNote: string | null; performanceIndex: number | null; reviewedAt: string | null };
 };
 
-/** Plain, client-safe shape (no Decimal / Date instances). */
-export function serializeReport(r: DailyReport): PlannerReport {
+/**
+ * Plain, client-safe shape (no Decimal / Date instances).
+ * Manager Note / Performance Index are admin-owned: included only when `withReview` is true.
+ */
+export function serializeReport(r: DailyReport, { withReview }: { withReview: boolean }): PlannerReport {
   return {
     id: r.id,
     reportDate: isoFromDate(r.reportDate),
@@ -31,7 +33,7 @@ export function serializeReport(r: DailyReport): PlannerReport {
     // JSON columns are only ever written through reportContentSchema.
     content: {
       topPriorities: r.topPriorities as CheckItem[],
-      callsEmails: r.callsEmails as CheckItem[],
+      callsEmails: r.callsEmails as CommunicationItem[],
       personalTodo: r.personalTodo as CheckItem[],
       dailySchedules: r.dailySchedules as ScheduleItem[],
       officeIn: r.officeIn,
@@ -41,14 +43,20 @@ export function serializeReport(r: DailyReport): PlannerReport {
       mood: r.mood,
       health: r.health,
       tasks: r.tasks as TaskItem[],
-      appointments: r.appointments as CheckItem[],
+      appointments: r.appointments as AppointmentItem[],
     },
     netOfficeHours: r.netOfficeHours?.toNumber() ?? null,
     totalPlannedHours: r.totalPlannedHours.toNumber(),
     totalWorkedHours: r.totalWorkedHours.toNumber(),
-    managerNote: r.managerNote,
-    performanceIndex: r.performanceIndex,
-    reviewedAt: r.reviewedAt?.toISOString() ?? null,
+    ...(withReview
+      ? {
+          review: {
+            managerNote: r.managerNote,
+            performanceIndex: r.performanceIndex,
+            reviewedAt: r.reviewedAt?.toISOString() ?? null,
+          },
+        }
+      : {}),
   };
 }
 
@@ -71,9 +79,9 @@ export function withoutBlankRows(c: ReportContent): ReportContent {
   return {
     ...c,
     topPriorities: c.topPriorities.filter(filled),
-    callsEmails: c.callsEmails.filter(filled),
+    callsEmails: c.callsEmails.filter((item) => item.text !== ""),
     personalTodo: c.personalTodo.filter(filled),
-    appointments: c.appointments.filter(filled),
+    appointments: c.appointments.filter((a) => a.text !== "" || !!a.time),
     dailySchedules: c.dailySchedules.filter((s) => s.time !== "" || s.text !== ""),
     tasks: c.tasks.filter((t) => t.text !== "" || t.planned != null || t.worked != null),
   };

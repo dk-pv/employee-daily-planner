@@ -27,8 +27,8 @@ input[type="number"] {
 /* Paper-style checkbox (square) and appointment marker (round). Same look when disabled/read-only. */
 .paper-check {
   appearance: none;
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
   border: 1.25px solid #262626;
   border-radius: 3px;
@@ -54,23 +54,22 @@ input[type="number"] {
   outline-offset: 2px;
 }
 
+/* One A4 sheet per report: the sheet carries its own 8mm margin, so no browser header/footer is added. */
 @page {
   size: A4 portrait;
-  margin: 9mm;
+  margin: 0;
 }
 
 @media print {
   html,
   body {
     background: #fff !important;
+    height: auto !important;
+    min-height: 0 !important;
   }
   /* Keep filled rating circles / markers black on paper. */
   * {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
-  }
-  /* The clock-picker icon is an interactive control; on paper it only clips the time. */
-  input[type="time"]::-webkit-calendar-picker-indicator {
-    display: none;
   }
 }

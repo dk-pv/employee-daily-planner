@@ -51,6 +51,42 @@ re-seeding creates a *new* admin with that email — rename the existing one in 
   account out everywhere else. The session cookie is `Secure` in production, so serve the app over HTTPS.
 - Emails are unique and stored lower-case.
 
+## Deploying to Vercel
+
+**Environment variables** (Project → Settings → Environment Variables):
+
+| Variable | Environments | Value |
+| --- | --- | --- |
+| `DATABASE_URL` | Production, Preview | Neon **pooled** connection string (host contains `-pooler`) |
+| `DIRECT_URL` | Production | Neon **direct** connection string (no `-pooler`) — used only by `prisma migrate deploy` during the build |
+| `APP_TIMEZONE` | Production, Preview | `Asia/Kolkata` (Vercel servers run in UTC) |
+
+Point Preview at a separate Neon branch, never at the production database. Do not set `SEED_ADMIN_*` (seeding is a
+one-off from your machine) or `NODE_ENV` (Vercel manages it; forcing `production` at install time skips the
+devDependencies the build needs, such as `prisma` and `typescript`).
+
+**Build Command** (Project → Settings → Build & Development Settings → Override):
+
+```bash
+if [ "$VERCEL_ENV" = "production" ]; then npx prisma migrate deploy; fi && npm run build
+```
+
+Production builds apply pending migrations with `prisma migrate deploy` (never `db push`, never a reset) and fail the
+deployment if a migration fails; Preview builds skip migrations. `npm run build` runs `prisma generate` then `next build`.
+
+**First deploy:** after the first production build has created the tables, create the first admin once from your
+machine against the production database. In PowerShell (the last command clears the variables again, so later
+commands in the same terminal can't hit production by accident):
+
+```powershell
+$env:DATABASE_URL="<production connection string>"; $env:SEED_ADMIN_EMAIL="<admin email>"; $env:SEED_ADMIN_PASSWORD="<strong password>"
+npx prisma db seed
+Remove-Item Env:DATABASE_URL, Env:SEED_ADMIN_EMAIL, Env:SEED_ADMIN_PASSWORD
+```
+
+Shell variables take precedence over `.env.local` (nothing is written to disk), and the seed skips an email that
+already exists.
+
 ## Checks
 
 ```bash

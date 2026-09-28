@@ -37,7 +37,7 @@ export default async function PlannerPage({ searchParams }: PageProps<"/">) {
           mode="staff"
           employee={{ name: user.name, department: user.department }}
           date={date}
-          report={report ? serializeReport(report, { withReview: false }) : null}
+          report={report ? serializeReport(report) : null}
           lockReason={lockReason}
           timeZone={process.env.APP_TIMEZONE || "Asia/Kolkata"}
         />

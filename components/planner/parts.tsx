@@ -1,14 +1,7 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
-import {
-  Controller,
-  useFieldArray,
-  useWatch,
-  type Control,
-  type UseFormRegister,
-  type UseFormRegisterReturn,
-} from "react-hook-form";
+import type { CSSProperties, ReactNode } from "react";
+import { Controller, useFieldArray, useWatch, type Control, type UseFormRegister, type UseFormRegisterReturn } from "react-hook-form";
 import { calcNetOfficeHours, formatHours, sumHours } from "@/lib/utils";
 import {
   COMMUNICATION_LABELS,
@@ -31,7 +24,6 @@ export type FormValues = {
   /** Communications table (Call / Email / Direct Meeting); stored in the existing callsEmails column. */
   callsEmails: CommunicationRow[];
   personalTodo: CheckRow[];
-  appointments: { text: string; done: boolean; time: string }[];
   dailySchedules: { time: string; text: string }[];
   tasks: { text: string; done: boolean; planned: string; worked: string }[];
   officeIn: string;
@@ -42,16 +34,20 @@ export type FormValues = {
   health: number | null;
 };
 
+/** A thin writing line, like the printed planner. */
 export const lineInput =
-  "w-full min-w-0 border-0 border-b border-neutral-300 bg-transparent px-1 py-1 text-[14px] leading-5 text-neutral-900 " +
+  "w-full min-w-0 border-0 border-b border-neutral-400 bg-transparent px-1 py-[3px] text-[13.5px] leading-5 text-neutral-900 " +
   "placeholder:text-neutral-300 focus:border-neutral-900 focus:bg-neutral-50 focus:outline-none " +
   "disabled:bg-transparent disabled:text-neutral-900 aria-invalid:border-red-600 aria-invalid:text-red-700 " +
-  "print:py-0.5 print:text-[10.5px] print:placeholder:text-transparent";
+  "print:py-0.5 print:text-[10px] print:placeholder:text-transparent";
+
+const label = "text-[10px] font-bold uppercase tracking-[0.04em] text-neutral-900 print:text-[8px]";
 
 // ---------------------------------------------------------------------------
 // Layout pieces
 // ---------------------------------------------------------------------------
 
+/** Rounded box with a ruled title strip, as in the A4 reference. */
 export function Section({
   title,
   action,
@@ -66,15 +62,13 @@ export function Section({
   children: ReactNode;
 }) {
   return (
-    <section
-      className={`break-inside-avoid rounded-lg border border-neutral-800 px-3 py-2 print:px-2.5 print:py-1.5 ${className}`}
-    >
-      <div className="mb-1 flex min-h-6 items-center justify-between gap-2 print:mb-0.5 print:min-h-0">
-        <h2 className="text-[11.5px] font-bold tracking-[0.14em] text-neutral-900 print:text-[9.5px]">{title}</h2>
+    <section className={`flex min-w-0 flex-col break-inside-avoid rounded-md border border-neutral-900 px-2.5 pb-2 print:px-2 print:pb-1 ${className}`}>
+      <div className="-mx-2.5 mb-1.5 flex min-h-8 items-center justify-between gap-2 border-b border-neutral-900 px-2.5 print:-mx-2 print:mb-1 print:min-h-5 print:px-2">
+        <h2 className="text-[11px] font-bold uppercase tracking-[0.04em] text-neutral-900 print:text-[8.5px]">{title}</h2>
         {action}
       </div>
       {/* A disabled fieldset makes every control inside read-only in one place. */}
-      <fieldset disabled={disabled} className="m-0 min-w-0 border-0 p-0">
+      <fieldset disabled={disabled} className="m-0 flex min-h-0 min-w-0 flex-1 flex-col border-0 p-0">
         {children}
       </fieldset>
     </section>
@@ -82,13 +76,13 @@ export function Section({
 }
 
 /**
- * "n/max" counter + "+ Add" for a fixed-size A4 section. The button disappears at the limit
- * (and the add handler re-checks it), so no section can grow past its printed space.
+ * "n/max" counter + small "+ Add" for a fixed-size section. The button disappears at the limit
+ * (and the add handler re-checks it), so no section can outgrow its space on the A4 page.
  */
 function RowLimit({
   count,
   max,
-  label,
+  label: addLabel,
   onAdd,
   readOnly,
 }: {
@@ -100,7 +94,7 @@ function RowLimit({
 }) {
   if (readOnly) return null;
   return (
-    <div className="flex shrink-0 items-center gap-2 print:hidden">
+    <div className="flex shrink-0 items-center gap-1.5 print:hidden">
       <span className="text-[10px] font-medium tabular-nums text-neutral-400" title={`${count} of ${max} rows used`}>
         {count}/{max}
       </span>
@@ -108,135 +102,76 @@ function RowLimit({
         <button
           type="button"
           onClick={onAdd}
-          aria-label={label}
-          title={label}
-          className="inline-flex items-center gap-1 rounded-md border border-dashed border-neutral-300 px-2 py-0.5 text-xs font-medium text-neutral-700 hover:border-neutral-500 hover:bg-neutral-50 hover:text-neutral-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900"
+          aria-label={addLabel}
+          title={addLabel}
+          className="rounded border border-dashed border-neutral-400 px-1.5 text-[11px] font-medium leading-5 text-neutral-700 hover:border-neutral-700 hover:bg-neutral-50 hover:text-neutral-900 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-neutral-900"
         >
-          <span aria-hidden className="text-sm leading-none">
-            +
-          </span>
-          Add
+          + Add
         </button>
       )}
     </div>
   );
 }
 
-/** On paper the text is printed as wrapped text, so nothing typed is lost to a narrow field. */
-function PrintText({ value }: { value: string | undefined }) {
+/**
+ * On paper the text is printed wrapped, so nothing typed is lost to a short writing line. Line
+ * breaks collapse and long words break. `lines` is a last-resort cap (see .print-text in
+ * globals.css): text within the row limits never reaches it, only freak all-wide-letter text would.
+ */
+function PrintText({ value, lines = 2 }: { value: string | undefined; lines?: number }) {
   return (
-    <span className="hidden min-h-[17px] min-w-0 flex-1 whitespace-pre-wrap break-words border-b border-neutral-300 py-0.5 text-[10.5px] leading-snug text-neutral-900 print:block">
+    <span
+      style={{ "--print-lines": lines } as CSSProperties}
+      className="print-text hidden min-h-[14px] min-w-0 flex-1 whitespace-normal break-words border-b border-neutral-400 py-px text-[9.5px] leading-[1.25] text-neutral-900"
+    >
       {value}
     </span>
   );
 }
 
-/**
- * Writing line that grows with its text up to `maxLines` (then scrolls inside the field), so long
- * entries wrap and stay readable without letting the fixed A4 sheet grow.
- */
-function GrowingText({
-  registration,
-  label,
-  placeholder,
-  className = "",
-  maxLines = 2,
-}: {
-  registration: UseFormRegisterReturn;
-  label: string;
-  placeholder?: string;
-  className?: string;
-  maxLines?: number;
-}) {
-  const box = useRef<HTMLTextAreaElement | null>(null);
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const fit = () => {
-      const cs = getComputedStyle(el);
-      const border = el.offsetHeight - el.clientHeight;
-      const max = maxLines * parseFloat(cs.lineHeight) + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + border;
-      el.style.height = "auto";
-      const full = el.scrollHeight + border;
-      el.style.height = `${Math.min(full, max)}px`;
-      el.style.overflowY = full > max ? "auto" : "hidden";
-    };
-    fit(); // react-hook-form has already written the saved value by now
-    let width = el.clientWidth;
-    let frame = 0;
-    // Re-fit on width changes, one frame later so the resize never loops inside the observer.
-    const onResize = new ResizeObserver(() => {
-      if (el.clientWidth === width) return;
-      width = el.clientWidth;
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(fit);
-    });
-    onResize.observe(el);
-    el.addEventListener("input", fit);
-    return () => {
-      cancelAnimationFrame(frame);
-      onResize.disconnect();
-      el.removeEventListener("input", fit);
-    };
-  }, [maxLines]);
-  const { ref, ...field } = registration;
-  return (
-    <textarea
-      rows={1}
-      {...field}
-      ref={(el) => {
-        ref(el);
-        box.current = el;
-      }}
-      aria-label={label}
-      placeholder={placeholder}
-      maxLength={ROW_TEXT_MAX}
-      className={`${lineInput} block resize-none overflow-hidden print:hidden ${className}`}
-    />
-  );
-}
-
-/** Single writing line for the wide right-hand column. */
+/** Single writing line. */
 function LineText({
   registration,
-  label,
+  label: aria,
+  maxLength,
   className = "",
 }: {
   registration: UseFormRegisterReturn;
   label: string;
+  maxLength: number;
   className?: string;
 }) {
   return (
     <input
       type="text"
       {...registration}
-      aria-label={label}
-      maxLength={ROW_TEXT_MAX}
+      aria-label={aria}
+      maxLength={maxLength}
       autoComplete="off"
       className={`${lineInput} print:hidden ${className}`}
     />
   );
 }
 
-function RemoveButton({ onClick, label, floating }: { onClick: () => void; label: string; floating?: boolean }) {
+function RemoveButton({ onClick, label: aria, floating }: { onClick: () => void; label: string; floating?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={label}
+      aria-label={aria}
       title="Remove row"
-      className={`${floating ? "absolute right-0 top-[3px]" : ""} grid size-6 shrink-0 place-items-center rounded text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800 focus-visible:opacity-100 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 print:hidden`}
+      className={`${floating ? "absolute right-0 top-[2px]" : ""} grid size-6 shrink-0 place-items-center rounded text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800 focus-visible:opacity-100 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 print:hidden`}
     >
       <span aria-hidden>×</span>
     </button>
   );
 }
 
-// Checkbox/marker lined up with the first line of a (possibly two-line) text field.
-const rowMarker = "mt-[7px] print:mt-[3px]";
-// Editable rows keep room at the end of the text for the floating remove (×) button.
+// Checkbox lined up with its writing line.
+const rowMarker = "mt-[6px] print:mt-[2px]";
+// Editable rows keep room at the end of the line for the floating remove (×) button.
 const roomForRemove = (readOnly: boolean) => (readOnly ? "" : "pr-7");
-const columnHead = "border-b border-neutral-800 pb-0.5 text-[10px] font-bold tracking-[0.1em] text-neutral-600 print:text-[8.5px]";
+const columnHead = "text-[9px] font-bold uppercase tracking-[0.04em] text-neutral-900 print:text-[7.5px]";
 
 // ---------------------------------------------------------------------------
 // Dynamic lists (each one a fixed-maximum section)
@@ -260,12 +195,10 @@ export function CheckList({
   name,
   title,
   itemLabel,
-  numbered,
 }: ListProps & {
   name: "topPriorities" | "personalTodo";
   title: string;
   itemLabel: string;
-  numbered?: boolean;
 }) {
   const { fields, append, remove } = useFieldArray({ control, name });
   const rows = useWatch({ control, name });
@@ -289,19 +222,19 @@ export function CheckList({
         />
       }
     >
-      <ul className="space-y-0.5">
+      <ul>
         {fields.map((field, i) => (
-          <li key={field.id} className="group relative flex items-start gap-2">
+          <li key={field.id} title={rows[i]?.text || undefined} className="group relative flex items-start gap-2">
             <input
               type="checkbox"
               {...register(`${name}.${i}.done`)}
               aria-label={`${itemLabel} ${i + 1} done`}
               className={`paper-check ${rowMarker}`}
             />
-            <GrowingText
+            <LineText
               registration={register(`${name}.${i}.text`)}
               label={`${itemLabel} ${i + 1}`}
-              placeholder={numbered && !readOnly ? `${itemLabel} ${i + 1}` : undefined}
+              maxLength={ROW_TEXT_MAX[name]}
               className={roomForRemove(readOnly)}
             />
             <PrintText value={rows[i]?.text} />
@@ -322,64 +255,6 @@ export function CheckList({
   );
 }
 
-export function ScheduleList({ control, register, readOnly, onRowsChange, className }: ListProps) {
-  const { fields, append, remove } = useFieldArray({ control, name: "dailySchedules" });
-  const rows = useWatch({ control, name: "dailySchedules" });
-  const max = ROW_LIMITS.dailySchedules;
-  return (
-    <Section
-      title="DAILY SCHEDULES"
-      disabled={readOnly}
-      className={className}
-      action={
-        <RowLimit
-          count={fields.length}
-          max={max}
-          label="Add schedule"
-          readOnly={readOnly}
-          onAdd={() => {
-            if (fields.length >= max) return;
-            append({ time: "", text: "" });
-            onRowsChange();
-          }}
-        />
-      }
-    >
-      {/* In a narrow column the time sits above a full-width text line; side by side when there is room and on paper. */}
-      <ul className="space-y-1 @container @2xs:space-y-0.5">
-        {fields.map((field, i) => (
-          <li
-            key={field.id}
-            className="group relative flex flex-col items-start @2xs:flex-row @2xs:gap-2 print:flex-row print:gap-2"
-          >
-            <Controller
-              control={control}
-              name={`dailySchedules.${i}.time`}
-              render={({ field: time }) => <TimePicker value={time.value} onChange={time.onChange} label={`Schedule ${i + 1}`} />}
-            />
-            <GrowingText
-              registration={register(`dailySchedules.${i}.text`)}
-              label={`Schedule ${i + 1}`}
-              className={readOnly ? "" : "@2xs:pr-7"}
-            />
-            <PrintText value={rows[i]?.text} />
-            {!readOnly && (
-              <RemoveButton
-                onClick={() => {
-                  remove(i);
-                  onRowsChange();
-                }}
-                label={`Remove schedule ${i + 1}`}
-                floating
-              />
-            )}
-          </li>
-        ))}
-      </ul>
-    </Section>
-  );
-}
-
 /** First communication type not used yet, so a new row defaults to a sensible choice. */
 function nextCommunicationType(rows: CommunicationRow[] | undefined): CommunicationType {
   return COMMUNICATION_TYPES.find((t) => !rows?.some((r) => r.type === t)) ?? "CALL";
@@ -389,7 +264,7 @@ export function CommunicationsTable({ control, register, readOnly, onRowsChange,
   const { fields, append, remove } = useFieldArray({ control, name: "callsEmails" });
   const rows = useWatch({ control, name: "callsEmails" });
   const max = ROW_LIMITS.callsEmails;
-  const cols = "grid grid-cols-[8.75rem_minmax(0,1fr)] items-start gap-x-3 print:grid-cols-[5.75rem_minmax(0,1fr)] print:gap-x-2";
+  const cols = "grid grid-cols-[7.5rem_minmax(0,1fr)] items-start gap-x-2 print:grid-cols-[4.6rem_minmax(0,1fr)] print:gap-x-1.5";
   return (
     <Section
       title="COMMUNICATIONS"
@@ -410,19 +285,19 @@ export function CommunicationsTable({ control, register, readOnly, onRowsChange,
       }
     >
       <div className={`${cols} ${columnHead}`}>
-        <span>TYPE</span>
-        <span>DETAILS / CONTACT</span>
+        <span>Type</span>
+        <span>Details</span>
       </div>
       <ul>
         {fields.map((field, i) => {
           const type = rows[i]?.type ?? "";
           return (
-            <li key={field.id} className={`group relative ${cols}`}>
+            <li key={field.id} title={rows[i]?.text || undefined} className={`group relative ${cols}`}>
               <select
                 {...register(`callsEmails.${i}.type`)}
                 aria-label={`Communication ${i + 1} type`}
                 aria-invalid={!type && !!rows[i]?.text}
-                className={`${lineInput} cursor-pointer disabled:cursor-default print:hidden`}
+                className={`${lineInput} cursor-pointer pl-0 text-[12.5px] disabled:cursor-default print:hidden`}
               >
                 {/* Only rows saved before types existed can be blank; they must pick one to be saved. */}
                 {!type && <option value="">Choose type…</option>}
@@ -436,9 +311,10 @@ export function CommunicationsTable({ control, register, readOnly, onRowsChange,
               <LineText
                 registration={register(`callsEmails.${i}.text`)}
                 label={`Communication ${i + 1} details`}
+                maxLength={ROW_TEXT_MAX.callsEmails}
                 className={roomForRemove(readOnly)}
               />
-              <PrintText value={rows[i]?.text} />
+              <PrintText value={rows[i]?.text} lines={3} />
               {!readOnly && (
                 <RemoveButton
                   onClick={() => {
@@ -457,56 +333,56 @@ export function CommunicationsTable({ control, register, readOnly, onRowsChange,
   );
 }
 
-export function AppointmentList({ control, register, readOnly, onRowsChange, className }: ListProps) {
-  const { fields, append, remove } = useFieldArray({ control, name: "appointments" });
-  const rows = useWatch({ control, name: "appointments" });
-  const max = ROW_LIMITS.appointments;
+export function ScheduleList({ control, register, readOnly, onRowsChange, className }: ListProps) {
+  const { fields, append, remove } = useFieldArray({ control, name: "dailySchedules" });
+  const rows = useWatch({ control, name: "dailySchedules" });
+  const max = ROW_LIMITS.dailySchedules;
+  const cols = "grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 print:grid-cols-[4.2rem_minmax(0,1fr)] print:gap-x-1.5";
   return (
     <Section
-      title="APPOINTMENTS"
+      title="DAILY SCHEDULES"
       disabled={readOnly}
       className={className}
       action={
         <RowLimit
           count={fields.length}
           max={max}
-          label="Add appointment"
+          label="Add schedule"
           readOnly={readOnly}
           onAdd={() => {
             if (fields.length >= max) return;
-            append({ text: "", done: false, time: "" });
+            append({ time: "", text: "" });
             onRowsChange();
           }}
         />
       }
     >
+      <div className={`${cols} ${columnHead}`}>
+        <span className="w-[6.1rem] print:w-auto">Time</span>
+        <span>Schedule / Appointment</span>
+      </div>
       <ul>
         {fields.map((field, i) => (
-          <li key={field.id} className="group relative flex items-start gap-2">
-            <input
-              type="checkbox"
-              {...register(`appointments.${i}.done`)}
-              aria-label={`Appointment ${i + 1} marked`}
-              className={`paper-check round ${rowMarker}`}
-            />
+          <li key={field.id} title={rows[i]?.text || undefined} className={`group relative ${cols}`}>
             <Controller
               control={control}
-              name={`appointments.${i}.time`}
-              render={({ field: time }) => <TimePicker value={time.value} onChange={time.onChange} label={`Appointment ${i + 1}`} />}
+              name={`dailySchedules.${i}.time`}
+              render={({ field: time }) => <TimePicker value={time.value} onChange={time.onChange} label={`Schedule ${i + 1}`} />}
             />
             <LineText
-              registration={register(`appointments.${i}.text`)}
-              label={`Appointment ${i + 1}`}
+              registration={register(`dailySchedules.${i}.text`)}
+              label={`Schedule ${i + 1}`}
+              maxLength={ROW_TEXT_MAX.dailySchedules}
               className={roomForRemove(readOnly)}
             />
-            <PrintText value={rows[i]?.text} />
+            <PrintText value={rows[i]?.text} lines={3} />
             {!readOnly && (
               <RemoveButton
                 onClick={() => {
                   remove(i);
                   onRowsChange();
                 }}
-                label={`Remove appointment ${i + 1}`}
+                label={`Remove schedule ${i + 1}`}
                 floating
               />
             )}
@@ -528,9 +404,8 @@ export function TaskTable({ control, register, readOnly, onRowsChange, className
   const toNum = (s: string) => (s.trim() === "" || !hoursOk(s) ? null : Number(s));
   const totalPlanned = sumHours(tasks.map((t) => toNum(t.planned)));
   const totalWorked = sumHours(tasks.map((t) => toNum(t.worked)));
-  // Narrower hour columns on phones so the task text keeps most of the row.
   const cols =
-    "grid grid-cols-[16px_minmax(0,1fr)_3.25rem_3.25rem_1.25rem] sm:grid-cols-[16px_minmax(0,1fr)_4rem_4rem_1.5rem] items-start gap-x-2 print:grid-cols-[15px_minmax(0,1fr)_3rem_3rem]";
+    "grid grid-cols-[16px_minmax(0,1fr)_4.5rem_4.5rem_1.5rem] items-start gap-x-2.5 print:grid-cols-[14px_minmax(0,1fr)_3.2rem_3.2rem] print:gap-x-2";
 
   return (
     <Section
@@ -551,23 +426,22 @@ export function TaskTable({ control, register, readOnly, onRowsChange, className
         />
       }
     >
-      <div className={`${cols} items-end ${columnHead}`}>
-        <span />
-        <span>TASK</span>
-        <span className="whitespace-nowrap text-center tracking-normal">PLAN HRS</span>
-        <span className="whitespace-nowrap text-center tracking-normal">WORKED</span>
+      <div className={`${cols} ${columnHead}`}>
+        <span className="col-span-2">Task</span>
+        <span className="text-center">Plan Hrs</span>
+        <span className="text-center">Worked</span>
         <span className="print:hidden" />
       </div>
       <ul>
         {fields.map((field, i) => (
-          <li key={field.id} className={`group ${cols}`}>
+          <li key={field.id} title={tasks[i]?.text || undefined} className={`group ${cols}`}>
             <input
               type="checkbox"
               {...register(`tasks.${i}.done`)}
               aria-label={`Task ${i + 1} completed`}
               className={`paper-check ${rowMarker}`}
             />
-            <LineText registration={register(`tasks.${i}.text`)} label={`Task ${i + 1}`} />
+            <LineText registration={register(`tasks.${i}.text`)} label={`Task ${i + 1}`} maxLength={ROW_TEXT_MAX.tasks} />
             <PrintText value={tasks[i]?.text} />
             <input
               type="number"
@@ -605,19 +479,23 @@ export function TaskTable({ control, register, readOnly, onRowsChange, className
           </li>
         ))}
       </ul>
-      <div className="mt-2 grid grid-cols-2 gap-2 print:mt-1">
-        <Total label="TOTAL PLANNED" value={totalPlanned} />
-        <Total label="TOTAL WORKED" value={totalWorked} />
+      {/* Totals sit at the foot of the box, as in the reference. */}
+      <div className="mt-auto grid grid-cols-2 gap-6 pt-3 print:gap-4 print:pt-2">
+        <Total label="TOTAL PLANNED:" value={totalPlanned} />
+        <Total label="TOTAL WORKED:" value={totalWorked} />
       </div>
     </Section>
   );
 }
 
-function Total({ label, value }: { label: string; value: number }) {
+function Total({ label: text, value }: { label: string; value: number }) {
   return (
-    <div className="flex items-center justify-between gap-2 rounded-md border border-neutral-800 px-2.5 py-1 print:py-0.5">
-      <span className="text-[10px] font-bold tracking-[0.1em] print:text-[8.5px]">{label}</span>
-      <span className="whitespace-nowrap text-sm font-semibold tabular-nums print:text-[10.5px]" aria-live="polite">
+    <div className="flex items-end gap-2">
+      <span className={`${label} shrink-0`}>{text}</span>
+      <span
+        className="flex-1 border-b border-neutral-900 pb-0.5 text-center text-[13.5px] font-semibold tabular-nums print:text-[10px]"
+        aria-live="polite"
+      >
         {formatHours(value)} h
       </span>
     </div>
@@ -633,14 +511,14 @@ export function OfficeHours({ control, register }: Pick<ListProps, "control" | "
   const breakMinutes = breakRaw.trim() === "" ? null : Number(breakRaw);
   const breakInvalid = breakMinutes != null && (!Number.isInteger(breakMinutes) || breakMinutes < 0);
   const net = calcNetOfficeHours(officeIn || null, officeOut || null, breakInvalid ? null : breakMinutes);
-  const error = breakInvalid ? "Break must be a whole number of minutes, 0 or more." : net.error;
+  const error = breakInvalid ? "Break must be whole minutes, 0 or more." : net.error;
   const row = "flex items-center gap-2";
-  const label = "w-12 shrink-0 text-[10px] font-bold tracking-[0.1em] print:text-[8.5px]";
+  const rowLabel = `${label} w-[7.5rem] shrink-0 print:w-[5.2rem]`;
 
   return (
-    <div className="space-y-0.5">
+    <div>
       <div className={row}>
-        <span className={label}>IN</span>
+        <span className={rowLabel}>IN</span>
         <Controller
           control={control}
           name="officeIn"
@@ -648,17 +526,15 @@ export function OfficeHours({ control, register }: Pick<ListProps, "control" | "
         />
       </div>
       <div className={row}>
-        <span className={label}>OUT</span>
+        <span className={rowLabel}>OUT</span>
         <Controller
           control={control}
           name="officeOut"
-          render={({ field }) => (
-            <TimePicker value={field.value} onChange={field.onChange} label="OUT" invalid={!!net.error} />
-          )}
+          render={({ field }) => <TimePicker value={field.value} onChange={field.onChange} label="OUT" invalid={!!net.error} />}
         />
       </div>
       <label className={row}>
-        <span className={label}>BREAK</span>
+        <span className={rowLabel}>BREAK</span>
         <input
           type="number"
           inputMode="numeric"
@@ -668,18 +544,18 @@ export function OfficeHours({ control, register }: Pick<ListProps, "control" | "
           {...register("breakMinutes")}
           aria-label="Break in minutes"
           aria-invalid={breakInvalid}
-          className={`${lineInput} max-w-24 tabular-nums`}
+          className={`${lineInput} max-w-20 tabular-nums`}
         />
-        <span className="text-xs text-neutral-500 print:text-[9px]">min</span>
+        <span className="text-[11px] text-neutral-500 print:text-[8px]">min</span>
       </label>
-      <div className="mt-1.5 flex items-center justify-between gap-2 rounded-md bg-neutral-100 px-2.5 py-1 print:mt-1 print:py-0.5">
-        <span className="text-[10px] font-bold tracking-[0.1em] print:text-[8.5px]">NET OFFICE HOURS</span>
-        <span className="text-sm font-semibold tabular-nums print:text-[10.5px]" aria-live="polite">
-          {net.hours == null ? "—" : `${formatHours(net.hours)} h`}
+      <div className={row}>
+        <span className={rowLabel}>NET OFFICE HOURS</span>
+        <span className="min-w-0 flex-1 border-b border-neutral-400 px-1 py-[3px] text-[13.5px] font-semibold leading-5 tabular-nums print:py-0.5 print:text-[10px]" aria-live="polite">
+          {net.hours == null ? "" : `${formatHours(net.hours)} h`}
         </span>
       </div>
       {error && (
-        <p role="alert" className="pt-0.5 text-xs text-red-700 print:hidden">
+        <p role="alert" className="pt-0.5 text-[11px] text-red-700 print:hidden">
           {error}
         </p>
       )}
@@ -688,11 +564,11 @@ export function OfficeHours({ control, register }: Pick<ListProps, "control" | "
 }
 
 // ---------------------------------------------------------------------------
-// 1–5 scale used for daily ratings and the manager's performance index
+// 1–5 scale: small squares for the daily ratings, plain circled numerals for the performance index (as in the reference)
 // ---------------------------------------------------------------------------
 
 export function Scale({
-  label,
+  label: aria,
   value,
   onChange,
   disabled,
@@ -702,14 +578,15 @@ export function Scale({
   value: number | null;
   onChange: (value: number | null) => void;
   disabled?: boolean;
-  size?: "sm" | "lg";
+  /** "plain": bare numerals like the printed "1 2 3 4 5", the chosen one circled as if with a pen. */
+  size?: "sm" | "plain";
 }) {
-  const dot =
-    size === "lg"
-      ? "size-9 text-base rounded-md print:size-6 print:text-[10px]"
-      : "size-6 text-[11px] rounded-full print:size-4 print:text-[8px]";
+  const plain = size === "plain";
+  const box = plain
+    ? "size-6 rounded-full border-[1.5px] text-[13px] print:size-4 print:border print:text-[9px]"
+    : "size-[1.3rem] rounded-[3px] border text-[10px] print:size-[14px] print:text-[7.5px]";
   return (
-    <div role="radiogroup" aria-label={label} className={`flex ${size === "lg" ? "gap-2" : "gap-1"}`}>
+    <div role="radiogroup" aria-label={aria} className={`flex ${plain ? "gap-2 print:gap-1.5" : "gap-1"}`}>
       {[1, 2, 3, 4, 5].map((n) => {
         const selected = value === n;
         return (
@@ -718,12 +595,18 @@ export function Scale({
             type="button"
             role="radio"
             aria-checked={selected}
-            aria-label={`${label}: ${n} of 5`}
+            aria-label={`${aria}: ${n} of 5`}
             disabled={disabled}
             // Clicking the selected value again clears it.
             onClick={() => onChange(selected ? null : n)}
-            className={`grid shrink-0 place-items-center border border-neutral-800 font-semibold tabular-nums transition-colors ${dot} ${
-              selected ? "bg-neutral-900 text-white" : "bg-white text-neutral-700 enabled:hover:bg-neutral-100"
+            className={`grid shrink-0 place-items-center font-semibold tabular-nums transition-colors ${box} ${
+              plain
+                ? selected
+                  ? "border-neutral-900 text-neutral-900"
+                  : "border-transparent text-neutral-700 enabled:hover:bg-neutral-100"
+                : selected
+                  ? "border-neutral-900 bg-neutral-900 text-white"
+                  : "border-neutral-900 bg-white text-neutral-700 enabled:hover:bg-neutral-100"
             } disabled:cursor-default focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900`}
           >
             {n}

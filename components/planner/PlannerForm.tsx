@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, useTransition, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import { Controller, useForm } from "react-hook-form";
 import type { z } from "zod";
 import { Alert, btnPrimary, btnSecondary, ReportStatusBadge } from "@/components/ui/ui";
@@ -16,7 +16,6 @@ import {
   type ReportContent,
 } from "@/lib/validations";
 import {
-  AppointmentList,
   CheckList,
   CommunicationsTable,
   OfficeHours,
@@ -28,14 +27,15 @@ import {
   type FormValues,
 } from "./parts";
 
-// Blank rows on a fresh sheet (each section can grow to ROW_LIMITS, never beyond).
-const START_ROWS = { topPriorities: 3, callsEmails: 3, personalTodo: 3, dailySchedules: 3, tasks: 6, appointments: 3 };
+// Every section shows all its writing lines, like the paper planner; Communications starts with
+// one Call, one Email and one Direct Meeting row and can add one more.
+const START_ROWS = { ...ROW_LIMITS, callsEmails: 3 };
 
 function pad<T>(rows: T[], min: number, blank: () => T) {
   return [...rows, ...Array.from({ length: Math.max(0, min - rows.length) }, blank)];
 }
 
-/** Saved communications first; a fresh sheet starts with one Call, one Email and one Direct Meeting row. */
+/** Saved communications first, then blank rows for the types not used yet. */
 function communicationRows(saved: ReportContent["callsEmails"]): CommunicationRow[] {
   // Rows saved as the old Calls / Emails list have no type: shown as "Choose type…", nothing is guessed.
   const rows: CommunicationRow[] = saved.map((c) => ({ type: c.type ?? "", text: c.text, done: c.done ?? false }));
@@ -51,11 +51,6 @@ function toFormValues(c: ReportContent | null): FormValues {
     topPriorities: pad(c?.topPriorities ?? [], START_ROWS.topPriorities, check),
     callsEmails: communicationRows(c?.callsEmails ?? []),
     personalTodo: pad(c?.personalTodo ?? [], START_ROWS.personalTodo, check),
-    appointments: pad(
-      (c?.appointments ?? []).map((a) => ({ text: a.text, done: a.done, time: a.time ?? "" })),
-      START_ROWS.appointments,
-      () => ({ text: "", done: false, time: "" }),
-    ),
     dailySchedules: pad(c?.dailySchedules ?? [], START_ROWS.dailySchedules, () => ({ time: "", text: "" })),
     tasks: pad(
       (c?.tasks ?? []).map((t) => ({ ...t, planned: t.planned?.toString() ?? "", worked: t.worked?.toString() ?? "" })),
@@ -110,6 +105,26 @@ function rowsOverLimit(c: ReportContent | null) {
     .map((key) => `${SECTION_LABELS[key]} ${c[key].length}/${ROW_LIMITS[key]}`);
 }
 
+/**
+ * Scale factor that fits the fixed A4 canvas (width from --a4-screen-width in globals.css) into the
+ * available width, so small screens see the same page, smaller, instead of a reflowed layout.
+ */
+function useCanvasZoom() {
+  const box = useRef<HTMLDivElement>(null);
+  const [zoom, setZoom] = useState<number | null>(null);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const sheetWidth = parseFloat(getComputedStyle(el).getPropertyValue("--a4-screen-width")) || 900;
+    const update = () => setZoom(Math.min(1, el.clientWidth / sheetWidth));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return { box, zoom };
+}
+
 type Notice = { tone: "success" | "error"; text: string } | null;
 
 type Props = {
@@ -131,7 +146,9 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
   const submitted = report?.status === "SUBMITTED";
   // Drafts autosave; a submitted report changes only when the employee clicks Update.
   const autosave = !readOnly && !submitted;
-  const [overLimit] = useState(() => rowsOverLimit(initialReport?.content ?? null));
+  // Follows the saved report, so the warning clears once a trimmed version has been saved.
+  const overLimit = rowsOverLimit(report?.content ?? null);
+  const { box: canvas, zoom } = useCanvasZoom();
 
   const { control, register, getValues, subscribe } = useForm<FormValues>({
     defaultValues: toFormValues(initialReport?.content ?? null),
@@ -207,7 +224,8 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
     };
   }, [subscribe, readOnly, markChanged]);
 
-  // ---- Admin review (Manager Note + Performance Index): admin payloads only, never rendered for staff ----
+  // ---- Review (Manager Note + Performance Index): the admin edits it, staff see it read-only ----
+  const canReview = isAdmin && report != null;
   const [managerNote, setManagerNote] = useState(initialReport?.review?.managerNote ?? "");
   const [performance, setPerformance] = useState<number | null>(initialReport?.review?.performanceIndex ?? null);
   const [reviewSaving, setReviewSaving] = useState(false);
@@ -298,130 +316,111 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
         )}
       </div>
 
-      {/*
-        One A4 page. On desktop the sheet keeps A4 proportions (900 × 1273 px) and every section has a
-        fixed maximum number of rows, so the content always fits. Printed, it is exactly one A4 page.
-      */}
-      <article
-        aria-busy={navigating}
-        className={`rounded-sm bg-white p-4 shadow-sm ring-1 ring-neutral-200 transition-opacity sm:p-6 lg:mx-auto lg:flex lg:min-h-[1273px] lg:w-[900px] lg:flex-col print:flex print:min-h-[295mm] print:w-full print:flex-col print:rounded-none print:p-[8mm] print:shadow-none print:ring-0 ${
-          navigating ? "opacity-50" : ""
-        }`}
-      >
-        <header className="mb-3 print:mb-2">
-          <h1 className="text-center text-2xl font-extrabold tracking-[0.3em] text-neutral-900 sm:text-[28px] print:text-xl">
-            DAILY PLANNER
-          </h1>
-          <div className="mt-3 grid gap-3 sm:grid-cols-[1.3fr_1fr_1fr] print:mt-2 print:grid-cols-[1.3fr_1fr_1fr]">
-            <HeaderField label="EMPLOYEE">{employee.name}</HeaderField>
-            <HeaderField label="DEPARTMENT">{departmentLabel(employee.department)}</HeaderField>
-            <HeaderField label="DATE">
-              {isAdmin ? (
-                formatDate(date)
-              ) : (
-                <>
-                  <input
-                    type="date"
-                    required
-                    value={dateInput}
-                    onChange={(e) => void onDateChange(e.target.value)}
-                    aria-label="Report date"
-                    className="w-full min-w-0 bg-transparent text-sm font-medium focus:outline-none print:hidden"
+      {/* The A4 canvas: a fixed page (sizes in globals.css), scaled down on small screens, exactly one printed page. */}
+      <div ref={canvas} className="a4-canvas">
+        <article
+          aria-busy={navigating}
+          style={zoom == null ? undefined : ({ "--sheet-zoom": zoom } as CSSProperties)}
+          className={`a4-sheet mx-auto flex flex-col bg-white px-7 pb-7 pt-6 shadow-sm ring-1 ring-neutral-300 transition-opacity print:shadow-none print:ring-0 ${
+            navigating ? "opacity-50" : ""
+          }`}
+        >
+          <header className="print:mb-0.5">
+            <h1 className="text-center text-[26px] font-extrabold tracking-[0.02em] text-neutral-900 print:text-[19px]">
+              DAILY PLANNER
+            </h1>
+            <div className="mt-2 border-t-[1.5px] border-neutral-900 print:mt-1" />
+            <div className="mt-3 grid grid-cols-[1.42fr_1.17fr_1fr] gap-6 print:mt-2 print:gap-4">
+              <HeaderField label="EMPLOYEE">{employee.name}</HeaderField>
+              <HeaderField label="DEPARTMENT">{departmentLabel(employee.department)}</HeaderField>
+              <HeaderField label="DATE">
+                {isAdmin ? (
+                  formatDate(date)
+                ) : (
+                  <>
+                    <input
+                      type="date"
+                      required
+                      value={dateInput}
+                      onChange={(e) => void onDateChange(e.target.value)}
+                      aria-label="Report date"
+                      className="w-full min-w-0 bg-transparent text-[13.5px] font-medium focus:outline-none print:hidden"
+                    />
+                    <span className="hidden print:inline">{formatDate(date)}</span>
+                  </>
+                )}
+              </HeaderField>
+            </div>
+          </header>
+
+          {/* Column widths and section order follow the A4 reference: left 33.6%, gap 2.5%, right the rest. */}
+          <div className="mt-5 grid min-h-0 flex-1 grid-cols-[33.6%_minmax(0,1fr)] gap-x-[2.5%] print:mt-3">
+            <div className="flex min-w-0 flex-col gap-3 print:gap-1.5">
+              <CheckList {...lists} name="topPriorities" title="TOP PRIORITIES" itemLabel="Priority" className="grow-[2]" />
+              <CommunicationsTable {...lists} className="grow-[3]" />
+              <CheckList {...lists} name="personalTodo" title="PERSONAL TO DO LIST" itemLabel="To-do" className="grow" />
+              <ScheduleList {...lists} />
+              <div className="flex grow flex-col gap-1">
+                <Section title="OFFICE HOURS TRACKER" disabled={readOnly} className="grow">
+                  <OfficeHours control={control} register={register} />
+                </Section>
+                <Section title="HOW WILL YOU RATE YOUR DAY?" disabled={readOnly}>
+                  <div className="space-y-1 print:space-y-1">
+                    {(["productivity", "mood", "health"] as const).map((key) => (
+                      <div key={key} className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-[0.04em] print:text-[8px]">{key}</span>
+                        <Controller
+                          control={control}
+                          name={key}
+                          render={({ field }) => <Scale label={SECTION_NAMES[key]} value={field.value} onChange={field.onChange} />}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </Section>
+              </div>
+            </div>
+
+            <div className="flex min-w-0 flex-col gap-3 print:gap-1.5">
+              <TaskTable {...lists} className="flex-1" />
+              {/* Manager Note + Performance Index: written by the admin (PATCH /api/reports/[id]), read-only for staff. */}
+              <Section title="MANAGER NOTE" className="shrink-0">
+                <div className="flex items-center gap-3 py-1 print:py-0">
+                  <span className="text-[11px] font-bold uppercase tracking-[0.04em] print:text-[8.5px]">Performance index:</span>
+                  <Scale
+                    label="Performance index"
+                    value={performance}
+                    onChange={setPerformance}
+                    disabled={!canReview || reviewSaving}
+                    size="plain"
                   />
-                  <span className="hidden print:inline">{formatDate(date)}</span>
-                </>
-              )}
-            </HeaderField>
-          </div>
-        </header>
-
-        <div className="grid gap-2.5 md:grid-cols-[34%_minmax(0,1fr)] lg:flex-1 print:flex-1 print:grid-cols-[34%_minmax(0,1fr)] print:gap-2">
-          <div className="flex min-w-0 flex-col gap-2.5 print:gap-2">
-            <CheckList {...lists} name="topPriorities" title="TOP PRIORITIES" itemLabel="Priority" numbered />
-            <CheckList {...lists} name="personalTodo" title="PERSONAL TO DO LIST" itemLabel="To-do" />
-            <ScheduleList {...lists} className="flex-1" />
-          </div>
-
-          <div className="flex min-w-0 flex-col gap-2.5 print:gap-2">
-            <div className="grid gap-2.5 lg:grid-cols-[minmax(0,1fr)_auto] print:grid-cols-2 print:gap-2">
-              <Section title="OFFICE HOURS TRACKER" disabled={readOnly}>
-                <OfficeHours control={control} register={register} />
-              </Section>
-              <Section title="HOW WILL YOU RATE YOUR DAY?" disabled={readOnly}>
-                <div className="space-y-1.5 print:space-y-1">
-                  {(["productivity", "mood", "health"] as const).map((key) => (
-                    <div key={key} className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold tracking-[0.1em] print:text-[8.5px]">{key.toUpperCase()}</span>
-                      <Controller
-                        control={control}
-                        name={key}
-                        render={({ field }) => <Scale label={SECTION_NAMES[key]} value={field.value} onChange={field.onChange} />}
-                      />
-                    </div>
-                  ))}
                 </div>
-              </Section>
-            </div>
-            <CommunicationsTable {...lists} />
-            <TaskTable {...lists} />
-            <AppointmentList {...lists} className="flex-1" />
-          </div>
-        </div>
-
-        {/* Manager Note + Performance Index are admin-owned: never rendered for staff. Inside the sheet so it prints on the same page. */}
-        {isAdmin && report && (
-          <section
-            aria-labelledby="manager-review-title"
-            className="mt-2.5 break-inside-avoid rounded-lg border-2 border-neutral-900 px-3 py-2.5 print:mt-2 print:border print:px-2.5 print:py-1.5"
-          >
-            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-              <h2 id="manager-review-title" className="text-[12px] font-extrabold tracking-[0.2em] text-neutral-900 print:text-[9.5px]">
-                MANAGER REVIEW
-              </h2>
-              <p className="text-xs text-neutral-500 print:hidden">
-                {report.review?.reviewedAt ? `Last saved ${formatDateTime(report.review.reviewedAt, timeZone)}` : "Not reviewed yet"} · not
-                shown to staff
-              </p>
-            </div>
-            <div className="mt-2 grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] print:mt-1 print:grid-cols-[minmax(0,1fr)_auto] print:gap-3">
-              <div className="min-w-0">
-                <label
-                  htmlFor="manager-note"
-                  className="block text-[10px] font-bold tracking-[0.14em] text-neutral-600 print:text-[8.5px]"
+                {/* Six writing lines: the admin types straight onto them, staff get the same lines as plain text. */}
+                {canReview && (
+                  <textarea
+                    value={managerNote}
+                    onChange={(e) => setManagerNote(e.target.value)}
+                    maxLength={MANAGER_NOTE_MAX}
+                    rows={6}
+                    aria-label="Manager note"
+                    placeholder="Write feedback for this report…"
+                    className={`${ruled} mt-1 w-full resize-none border-0 px-1 py-0 focus:bg-neutral-50 focus:outline-none print:hidden`}
+                  />
+                )}
+                {/* On paper the lines tighten so even a full 600-character note stays on the one A4 page. */}
+                <p
+                  style={{ "--print-lines": 16 } as CSSProperties}
+                  className={`${ruled} ${ruledPrint} print-text mt-1 overflow-y-auto whitespace-pre-wrap break-words px-1 print:mt-0.5 print:whitespace-pre-line ${
+                    canReview ? "hidden" : ""
+                  }`}
                 >
-                  MANAGER NOTE
-                </label>
-                <textarea
-                  id="manager-note"
-                  value={managerNote}
-                  onChange={(e) => setManagerNote(e.target.value)}
-                  readOnly={reviewSaving}
-                  maxLength={MANAGER_NOTE_MAX}
-                  rows={3}
-                  placeholder="Write feedback for this report…"
-                  className={`${ruled} mt-1 w-full resize-none rounded-sm border-0 px-1.5 focus:bg-neutral-50 focus:outline-none focus-visible:ring-1 focus-visible:ring-neutral-900 print:hidden`}
-                />
-                {/* On paper: compact lines (no ruling) so even a full 600-character note stays on the one A4 page. */}
-                <p className={`${ruled} mt-0.5 hidden min-h-8 whitespace-pre-wrap print:block print:bg-none print:leading-snug`}>
-                  {managerNote}
+                  {managerNote || (!canReview && <span className="text-neutral-400 print:hidden">No manager note yet.</span>)}
                 </p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold tracking-[0.14em] text-neutral-600 print:text-[8.5px]">PERFORMANCE INDEX</p>
-                <div className="mt-1.5">
-                  <Scale label="Performance index" value={performance} onChange={setPerformance} disabled={reviewSaving} size="lg" />
-                </div>
-                <div className="mt-2.5 flex items-center justify-end gap-3 print:hidden">
-                  {reviewDirty && <span className="text-xs text-neutral-500">Unsaved changes</span>}
-                  <button type="button" onClick={() => void saveReview()} disabled={!reviewDirty || reviewSaving} className={btnPrimary}>
-                    {reviewSaving ? "Saving…" : "Save Review"}
-                  </button>
-                </div>
-              </div>
+              </Section>
             </div>
-          </section>
-        )}
-      </article>
+          </div>
+        </article>
+      </div>
 
       <div className="fixed inset-x-0 bottom-0 z-10 border-t border-neutral-200 bg-white/95 backdrop-blur print:hidden">
         <div className="mx-auto flex max-w-[948px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2.5 sm:px-6">
@@ -439,7 +438,12 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
               <ReportStatusBadge status={report?.status ?? null} />
               {report && <span>Last updated: {formatDateTime(report.updatedAt, timeZone)}</span>}
               {!isAdmin && report && !lockReason && <span>Editable until {formatDate(report.editableUntil)}</span>}
-              {isAdmin && report?.review?.reviewedAt && <span>Reviewed: {formatDateTime(report.review.reviewedAt, timeZone)}</span>}
+              {isAdmin && (
+                <span>
+                  {report?.review?.reviewedAt ? `Reviewed: ${formatDateTime(report.review.reviewedAt, timeZone)}` : "Not reviewed yet"}
+                  {reviewDirty && " · unsaved review changes"}
+                </span>
+              )}
               {!readOnly && saveLabel && (
                 <span className={saveState === "error" ? "font-medium text-red-700" : "text-neutral-500"}>{saveLabel}</span>
               )}
@@ -460,6 +464,11 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
                 {submitted ? "UPDATE DAILY REPORT" : "SUBMIT DAILY REPORT"}
               </button>
             )}
+            {isAdmin && report && (
+              <button type="button" onClick={() => void saveReview()} disabled={!reviewDirty || reviewSaving} className={btnPrimary}>
+                {reviewSaving ? "Saving…" : "Save Review"}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -467,15 +476,22 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
   );
 }
 
-// Ruled "paper" lines behind note text.
+// Six ruled "paper" lines for the manager's note; bg-local keeps them under the text when it scrolls.
 const ruled =
-  "bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_23px,#d4d4d4_23px,#d4d4d4_24px)] text-[13px] leading-6 print:text-[10.5px]";
+  "h-36 bg-local bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_23px,#a3a3a3_23px,#a3a3a3_24px)] text-[13px] leading-6";
+// Printed: the same six lines at a tighter pitch, growing to at most 16 (the .print-text cap) for a long note.
+const ruledPrint =
+  "print:h-auto print:min-h-24 print:bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_15px,#a3a3a3_15px,#a3a3a3_16px)] print:text-[9.5px] print:leading-4";
 
 function HeaderField({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex min-w-0 items-end gap-2 border-b border-neutral-800 pb-1">
-      <span className="shrink-0 text-[10px] font-bold tracking-[0.14em] text-neutral-600 print:text-[8.5px]">{label}:</span>
-      <span className="min-w-0 flex-1 truncate text-sm font-medium text-neutral-900 print:text-[11px]">{children}</span>
+    <div className="flex min-w-0 items-end gap-2">
+      <span className="shrink-0 pb-1 text-[10px] font-bold uppercase tracking-[0.04em] text-neutral-900 print:text-[8px]">
+        {label}:
+      </span>
+      <span className="min-w-0 flex-1 truncate border-b border-neutral-900 pb-1 text-[13.5px] font-medium text-neutral-900 print:text-[10.5px]">
+        {children}
+      </span>
     </div>
   );
 }

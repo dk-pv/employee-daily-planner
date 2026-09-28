@@ -54,7 +54,50 @@ input[type="number"] {
   outline-offset: 2px;
 }
 
-/* One A4 sheet per report: the sheet carries its own 8mm margin, so no browser header/footer is added. */
+/*
+ * A4 planner canvas — all page sizes live here.
+ * Screen: a fixed sheet in A4 proportions (210 × 297), scaled down on narrow screens (PlannerForm
+ * sets --sheet-zoom from the real width; the steps below are only the first-paint approximation).
+ * Print: the real A4 page, margin 0 with the sheet's own 8mm padding (so no browser header/footer).
+ */
+:root {
+  --a4-screen-width: 900px;
+  --a4-screen-height: 1273px;
+}
+.a4-canvas {
+  --sheet-zoom: 1;
+}
+@media (max-width: 947px) {
+  .a4-canvas {
+    --sheet-zoom: 0.85;
+  }
+}
+@media (max-width: 820px) {
+  .a4-canvas {
+    --sheet-zoom: 0.7;
+  }
+}
+@media (max-width: 680px) {
+  .a4-canvas {
+    --sheet-zoom: 0.54;
+  }
+}
+@media (max-width: 540px) {
+  .a4-canvas {
+    --sheet-zoom: 0.43;
+  }
+}
+@media (max-width: 420px) {
+  .a4-canvas {
+    --sheet-zoom: 0.32;
+  }
+}
+.a4-sheet {
+  width: var(--a4-screen-width);
+  min-height: var(--a4-screen-height);
+  zoom: var(--sheet-zoom);
+}
+
 @page {
   size: A4 portrait;
   margin: 0;
@@ -66,6 +109,23 @@ input[type="number"] {
     background: #fff !important;
     height: auto !important;
     min-height: 0 !important;
+  }
+  .a4-sheet {
+    width: 210mm;
+    min-height: 295mm; /* just under 297mm so rounding can never start a blank second page */
+    padding: 8mm;
+    zoom: 1;
+  }
+  /*
+   * Printed copy of a writing line. Row and text limits keep real text within this many lines;
+   * the cap only guarantees one page for pathological text (e.g. 50 wide "W" letters).
+   */
+  .print-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: var(--print-lines, 2);
+    line-clamp: var(--print-lines, 2);
+    overflow: hidden;
   }
   /* Keep filled rating circles / markers black on paper. */
   * {

@@ -73,6 +73,6 @@ export async function POST(request: Request) {
     : existing?.status === "SUBMITTED"
       ? "Report updated successfully."
       : "Report submitted successfully.";
-  // Staff never receive the manager's note or performance index.
-  return NextResponse.json({ report: serializeReport(report, { withReview: false }), message });
+  // The review (manager note / performance index) comes back read-only; this route never writes it.
+  return NextResponse.json({ report: serializeReport(report), message });
 }

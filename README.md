@@ -47,9 +47,9 @@ re-seeding creates a *new* admin with that email — rename the existing one in 
 - Staff can edit a report until `editableUntil = reportDate + 7 days` (checked server-side), and plan up to 7 days ahead.
 - Drafts autosave; submitted reports change only via **Update Daily Report**.
 - The planner is one printed A4 page, so rows are capped (enforced in the UI and the API, `ROW_LIMITS` in
-  `lib/validations.ts`): Top Priorities 3, Communications 4 (Call / Email / Direct Meeting), Personal To Do 4,
-  Daily Schedules 4, To Do List 8, Appointments 4; each row holds up to 100 characters, a manager note up to 600.
-- Manager Note and Performance Index are admin-only (`PATCH /api/reports/:id`).
+  `lib/validations.ts`): Top Priorities 3, Communications 4 (Call / Email / Direct Meeting), Personal To Do 6,
+  Daily Schedules 5, To Do List 18; each row has a text limit (`ROW_TEXT_MAX`), a manager note up to 600 characters.
+- Manager Note and Performance Index are written only by admins (`PATCH /api/reports/:id`); staff see them read-only.
 - Sessions are server-side (`Session` table). Logout ends the session; deactivation and password changes sign the
   account out everywhere else. The session cookie is `Secure` in production, so serve the app over HTTPS.
 - Emails are unique and stored lower-case.

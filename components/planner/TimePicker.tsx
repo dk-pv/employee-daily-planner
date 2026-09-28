@@ -7,7 +7,7 @@ const HOURS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0"
 const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
 
 const part =
-  "min-w-0 cursor-pointer appearance-none bg-transparent px-1 py-1 text-center text-[14px] leading-5 tabular-nums text-neutral-900 " +
+  "min-w-0 cursor-pointer appearance-none bg-transparent px-1 py-[3px] text-center text-[13.5px] leading-5 tabular-nums text-neutral-900 " +
   "rounded hover:bg-neutral-100 focus:bg-neutral-100 focus:outline-none focus-visible:ring-1 focus-visible:ring-neutral-900 " +
   "disabled:cursor-default disabled:hover:bg-transparent pointer-coarse:px-2";
 
@@ -54,7 +54,7 @@ export function TimePicker({
       role="group"
       aria-label={`${label} time`}
       title={incomplete ? "Choose hour, minute and AM/PM to save this time" : undefined}
-      className={`inline-flex shrink-0 items-center border-b ${flagged ? "border-red-600" : "border-neutral-300"} print:border-neutral-300`}
+      className={`inline-flex shrink-0 items-center border-b ${flagged ? "border-red-600" : "border-neutral-400"} print:border-neutral-400`}
     >
       <select
         aria-label={`${label} hour`}
@@ -99,7 +99,7 @@ export function TimePicker({
         <option value="PM">PM</option>
       </select>
       {/* On paper: plain text, or a blank line when no time was set. */}
-      <span className="hidden min-h-[17px] min-w-[4.2rem] py-0.5 text-[10.5px] leading-snug tabular-nums print:inline-block">
+      <span className="hidden min-h-[15px] min-w-[3.8rem] py-0.5 text-[10px] leading-snug tabular-nums print:inline-block">
         {formatTime12(value)}
       </span>
     </div>

@@ -85,19 +85,25 @@ export type UpdateUserInput = z.input<typeof updateUserSchema>;
 export const isoDateSchema = z.string().refine(isValidISODate, "Invalid date.");
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Invalid time.");
 /**
- * The planner is one printed A4 page, so every repeatable section has a fixed number of rows
- * (measured against the rendered sheet) and each row a text limit (two printed lines in the
- * narrow column). The UI hides "+ Add" at the limit; these schemas enforce it for any client.
+ * The planner is one printed A4 page laid out like the paper reference, so every repeatable section
+ * has a fixed number of writing lines and each line a text limit that still fits the printed column
+ * (the narrow left column holds about two printed lines). The UI hides "+ Add" at the limit; these
+ * schemas enforce the same limits for any client.
  */
 export const ROW_LIMITS = {
   topPriorities: 3,
   callsEmails: 4,
-  personalTodo: 4,
-  dailySchedules: 4,
-  tasks: 8,
-  appointments: 4,
+  personalTodo: 6,
+  dailySchedules: 5,
+  tasks: 18,
 } as const;
-export const ROW_TEXT_MAX = 100;
+export const ROW_TEXT_MAX: Record<keyof typeof ROW_LIMITS, number> = {
+  topPriorities: 60,
+  callsEmails: 50,
+  personalTodo: 60,
+  dailySchedules: 50,
+  tasks: 100,
+};
 export const MANAGER_NOTE_MAX = 600;
 
 export const SECTION_LABELS: Record<keyof typeof ROW_LIMITS, string> = {
@@ -106,7 +112,6 @@ export const SECTION_LABELS: Record<keyof typeof ROW_LIMITS, string> = {
   personalTodo: "Personal To Do List",
   dailySchedules: "Daily Schedules",
   tasks: "To Do List",
-  appointments: "Appointments",
 };
 
 /** Communications replace the old Calls / Emails list and reuse its JSON column (callsEmails). */
@@ -118,7 +123,8 @@ export const COMMUNICATION_LABELS: Record<CommunicationType, string> = {
   DIRECT_MEETING: "Direct Meeting",
 };
 
-const text = z.string().trim().max(ROW_TEXT_MAX, `Text is too long (${ROW_TEXT_MAX} characters max).`);
+const text = (section: keyof typeof ROW_LIMITS) =>
+  z.string().trim().max(ROW_TEXT_MAX[section], `Text is too long (${ROW_TEXT_MAX[section]} characters max).`);
 const hours = z
   .number("Hours must be a number.")
   .min(0, "Hours cannot be negative.")
@@ -128,29 +134,28 @@ const rating = z.number().int().min(1, "Ratings are 1–5.").max(5, "Ratings are
 const list = <T extends z.ZodType>(item: T, section: keyof typeof ROW_LIMITS) =>
   z.array(item).max(ROW_LIMITS[section], `${SECTION_LABELS[section]}: at most ${ROW_LIMITS[section]} rows.`);
 
-const checkItem = z.object({ text, done: z.boolean() });
-const scheduleItem = z.object({ time: time.or(z.literal("")), text });
-const taskItem = z.object({ text, done: z.boolean(), planned: hours, worked: hours });
-// time is optional so appointments saved before it existed stay valid.
-const appointmentItem = z.object({ text, done: z.boolean(), time: time.or(z.literal("")).optional() });
+const checkItem = (section: "topPriorities" | "personalTodo") => z.object({ text: text(section), done: z.boolean() });
+const scheduleItem = z.object({ time: time.or(z.literal("")), text: text("dailySchedules") });
+const taskItem = z.object({ text: text("tasks"), done: z.boolean(), planned: hours, worked: hours });
 // Rows saved as the old Calls / Emails list have no type (and a done flag, kept as-is).
 const communicationItem = z.object({
-  type: z.enum(COMMUNICATION_TYPES).or(z.literal("")).optional(),
-  text,
+  type: z.enum(["", ...COMMUNICATION_TYPES], "Choose Call, Email or Direct Meeting.").optional(),
+  text: text("callsEmails"),
   done: z.boolean().optional(),
 });
 
-export type CheckItem = z.infer<typeof checkItem>;
+export type CheckItem = z.infer<ReturnType<typeof checkItem>>;
 export type ScheduleItem = z.infer<typeof scheduleItem>;
 export type TaskItem = z.infer<typeof taskItem>;
-export type AppointmentItem = z.infer<typeof appointmentItem>;
 export type CommunicationItem = z.infer<typeof communicationItem>;
 
+// Appointments are no longer part of the planner. The column stays in the database (old data is
+// kept untouched); saves simply never send or write it.
 export const reportContentSchema = z
   .object({
-    topPriorities: list(checkItem, "topPriorities"),
+    topPriorities: list(checkItem("topPriorities"), "topPriorities"),
     callsEmails: list(communicationItem, "callsEmails"),
-    personalTodo: list(checkItem, "personalTodo"),
+    personalTodo: list(checkItem("personalTodo"), "personalTodo"),
     dailySchedules: list(scheduleItem, "dailySchedules"),
     officeIn: time.nullable(),
     officeOut: time.nullable(),
@@ -164,7 +169,6 @@ export const reportContentSchema = z
     mood: rating,
     health: rating,
     tasks: list(taskItem, "tasks"),
-    appointments: list(appointmentItem, "appointments"),
   })
   .superRefine((v, ctx) => {
     const { error } = calcNetOfficeHours(v.officeIn, v.officeOut, v.breakMinutes);

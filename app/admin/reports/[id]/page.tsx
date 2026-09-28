@@ -32,7 +32,7 @@ export default async function ReportReviewPage({ params }: PageProps<"/admin/rep
         mode="admin"
         employee={report.user}
         date={isoFromDate(report.reportDate)}
-        report={serializeReport(report, { withReview: true })}
+        report={serializeReport(report)}
         lockReason={null}
         timeZone={process.env.APP_TIMEZONE || "Asia/Kolkata"}
       />

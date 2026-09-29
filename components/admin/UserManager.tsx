@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { ConfirmDeleteDialog, Modal } from "@/components/ui/Modal";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 import { Alert, Badge, btnDangerSubtle, btnPrimary, btnSecondary, fieldInput, fieldLabel } from "@/components/ui/ui";
 import { DEPARTMENT_LABELS, DEPARTMENTS, departmentLabel, formatDateTime, type DepartmentValue } from "@/lib/utils";
 import { createUserSchema, updateUserSchema } from "@/lib/validations";
@@ -328,14 +329,12 @@ function UserForm({
           <label htmlFor="u-password" className={fieldLabel}>
             {user ? "Reset password" : "Password"}
           </label>
-          <input
+          <PasswordInput
             id="u-password"
-            type="password"
             {...register("password")}
             autoComplete="new-password"
             maxLength={128}
             placeholder={user ? "Leave blank to keep the current password" : "At least 8 characters"}
-            className={fieldInput}
           />
           {err("password")}
         </div>

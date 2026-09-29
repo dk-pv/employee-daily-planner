@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 import { Alert, btnPrimary, fieldInput, fieldLabel } from "@/components/ui/ui";
 
 type Portal = "STAFF" | "ADMIN";
@@ -71,14 +72,7 @@ export function LoginForm() {
         <label htmlFor="password" className={fieldLabel}>
           Password
         </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          required
-          className={fieldInput}
-        />
+        <PasswordInput id="password" name="password" autoComplete="current-password" required />
       </div>
       <button type="submit" disabled={pending} className={`${btnPrimary} w-full`}>
         {pending ? "Signing in…" : `Sign in to ${portal === "STAFF" ? "Daily Planner" : "Admin Panel"}`}

@@ -46,7 +46,10 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/users/[id]
       if (e.code === "P2002") return jsonError("A user with that email already exists.", 409);
       if (e.code === "P2025") return jsonError("User not found.", 404);
     }
-    throw e;
+    // Technical details stay in the server log; the browser gets a plain message. A validation error would echo
+    // the query (including the password hash), so only its name is logged.
+    console.error("User update failed", e instanceof Prisma.PrismaClientValidationError ? e.name : e);
+    return jsonError("The user could not be saved. Please try again.", 500);
   }
 }
 

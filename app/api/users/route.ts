@@ -23,6 +23,9 @@ export async function POST(request: Request) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       return jsonError("A user with that email already exists.", 409);
     }
-    throw e;
+    // Technical details stay in the server log; the browser gets a plain message. A validation error would echo
+    // the query (including the password hash), so only its name is logged.
+    console.error("User create failed", e instanceof Prisma.PrismaClientValidationError ? e.name : e);
+    return jsonError("The user could not be saved. Please try again.", 500);
   }
 }

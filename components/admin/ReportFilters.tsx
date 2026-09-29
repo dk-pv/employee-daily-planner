@@ -7,6 +7,8 @@ import { DEPARTMENT_LABELS, DEPARTMENTS } from "@/lib/utils";
 
 export type Filters = {
   q: string;
+  /** A staff user's id, or "" for all staff. */
+  staff: string;
   dept: string;
   status: string;
   period: "all" | "today" | "this-week" | "last-week" | "date" | "range";
@@ -24,8 +26,10 @@ const PERIOD_LABELS: Record<Filters["period"], string> = {
   range: "Date range",
 };
 
+export type StaffOption = { id: string; name: string; email: string; isActive: boolean };
+
 /** Filters live in the URL; the server page runs the actual database query. */
-export function ReportFilters({ initial }: { initial: Filters }) {
+export function ReportFilters({ initial, staff }: { initial: Filters; staff: StaffOption[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [f, setF] = useState(initial);
@@ -35,6 +39,7 @@ export function ReportFilters({ initial }: { initial: Filters }) {
     e.preventDefault();
     const params = new URLSearchParams();
     if (f.q.trim()) params.set("q", f.q.trim());
+    if (f.staff) params.set("staff", f.staff);
     if (f.dept) params.set("dept", f.dept);
     if (f.status) params.set("status", f.status);
     if (f.period !== "all") params.set("period", f.period);
@@ -47,14 +52,15 @@ export function ReportFilters({ initial }: { initial: Filters }) {
   }
 
   function reset() {
-    setF({ q: "", dept: "", status: "", period: "all", date: "", from: "", to: "" });
+    setF({ q: "", staff: "", dept: "", status: "", period: "all", date: "", from: "", to: "" });
     startTransition(() => router.push("/admin"));
   }
 
   return (
     <form onSubmit={apply} className="rounded-lg border border-neutral-200 bg-white p-4" role="search">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))]">
-        <div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[repeat(2,minmax(0,1.5fr))_repeat(3,minmax(0,1fr))]">
+        {/* Full row on two-column screens, so the other four filters form a 2×2 grid below it. */}
+        <div className="sm:col-span-2 lg:col-span-1">
           <label htmlFor="f-q" className={fieldLabel}>
             Search
           </label>
@@ -63,10 +69,23 @@ export function ReportFilters({ initial }: { initial: Filters }) {
             type="search"
             value={f.q}
             onChange={(e) => update({ q: e.target.value })}
-            placeholder="Employee name, email or department"
+            placeholder="Name, email or department"
             maxLength={100}
             className={fieldInput}
           />
+        </div>
+        <div>
+          <label htmlFor="f-staff" className={fieldLabel}>
+            Staff
+          </label>
+          <select id="f-staff" value={f.staff} onChange={(e) => update({ staff: e.target.value })} className={fieldInput}>
+            <option value="">All staff</option>
+            {staff.map((s) => (
+              <option key={s.id} value={s.id}>
+                {`${s.name} · ${s.email}${s.isActive ? "" : " (inactive)"}`}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label htmlFor="f-dept" className={fieldLabel}>

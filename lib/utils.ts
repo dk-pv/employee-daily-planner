@@ -1,7 +1,10 @@
 // Shared helpers — safe for both server and client code.
+import { Department } from "../generated/prisma/enums";
 
-export const DEPARTMENTS = ["SALES", "DEVELOPMENT", "MARKETING", "HR", "ACCOUNTS", "STUDENTS"] as const;
-export type DepartmentValue = (typeof DEPARTMENTS)[number];
+// The one department list: the Department enum in prisma/schema.prisma (generated, dependency-free).
+// Dropdowns, filters and validation all use it; a value without a label below fails the type check.
+export const DEPARTMENTS = Object.values(Department);
+export type DepartmentValue = Department;
 
 export const DEPARTMENT_LABELS: Record<DepartmentValue, string> = {
   SALES: "Sales",
@@ -9,7 +12,6 @@ export const DEPARTMENT_LABELS: Record<DepartmentValue, string> = {
   MARKETING: "Marketing",
   HR: "HR",
   ACCOUNTS: "Accounts",
-  STUDENTS: "Students",
 };
 
 export function departmentLabel(d: string | null | undefined) {

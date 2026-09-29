@@ -32,7 +32,7 @@ const userFields = {
   role: z.enum(ROLES, "Select a valid role."),
   // Missing, "" (the form's empty option) and null all mean "no department" -> stored as null.
   department: z
-    .union([z.enum(DEPARTMENTS), z.literal("")], "Select a valid department.")
+    .union([z.enum(DEPARTMENTS), z.literal("")], "Please select a valid department.")
     .nullish()
     .transform((v) => v || null),
   isActive: z.boolean(),
@@ -43,7 +43,7 @@ const requireStaffDepartment = (
   ctx: z.RefinementCtx,
 ) => {
   if (v.role === "STAFF" && !v.department) {
-    ctx.addIssue({ code: "custom", path: ["department"], message: "Department is required for staff." });
+    ctx.addIssue({ code: "custom", path: ["department"], message: "Department is required for staff users." });
   }
 };
 
@@ -51,7 +51,7 @@ const requireStaffDepartment = (
 const staffOnlyDepartment = <T extends { role: (typeof ROLES)[number]; department: string | null }>(v: T): T =>
   v.role === "ADMIN" ? { ...v, department: null } : v;
 
-const password = z.string().min(8, "Password must be at least 8 characters.").max(128);
+const password = z.string("Password is required.").min(8, "Password must be at least 8 characters.").max(128);
 
 export const createUserSchema = z
   .object({ ...userFields, password })

@@ -28,7 +28,7 @@ export const metadata: Metadata = { title: "Daily Reports · Admin" };
 const PAGE_SIZE = 20;
 const PERIODS = ["all", "today", "this-week", "last-week", "date", "range"] as const;
 
-function readFilters(sp: Record<string, string | string[] | undefined>): Filters & { page: number } {
+function readFilters(sp: Record<string, string | string[] | undefined>, staff: string): Filters & { page: number } {
   const get = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string).trim() : "");
   const date = (k: string) => (isValidISODate(get(k)) ? get(k) : "");
   const period = PERIODS.find((p) => p === get("period")) ?? "all";
@@ -36,6 +36,7 @@ function readFilters(sp: Record<string, string | string[] | undefined>): Filters
   const status = get("status") === "SUBMITTED" || get("status") === "DRAFT" ? get("status") : "";
   return {
     q: get("q").slice(0, 100),
+    staff,
     dept,
     status,
     period,
@@ -65,7 +66,11 @@ function dateRange(f: Filters, today: string): { from?: string; to?: string } | 
 
 export default async function ReportsPage({ searchParams }: PageProps<"/admin">) {
   await requireAdmin();
-  const filters = readFilters(await searchParams);
+  const sp = await searchParams;
+  // ?staff= filters only by an existing STAFF user's id (checked only when present); anything else means "All staff".
+  const staffParam = typeof sp.staff === "string" ? sp.staff.trim() : "";
+  const staffId = staffParam && (await prisma.user.count({ where: { id: staffParam, role: "STAFF" } })) ? staffParam : "";
+  const filters = readFilters(sp, staffId);
   const today = todayISO();
   const range = dateRange(filters, today);
 
@@ -86,6 +91,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/admin">)
     });
   }
   const where: Prisma.DailyReportWhereInput = {
+    ...(filters.staff ? { userId: filters.staff } : {}),
     ...(filters.status ? { status: filters.status as "DRAFT" | "SUBMITTED" } : {}),
     ...(range
       ? {
@@ -98,7 +104,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/admin">)
     ...(userWhere.length ? { user: { AND: userWhere } } : {}),
   };
 
-  const [total, reports] = await Promise.all([
+  const [total, reports, staff] = await Promise.all([
     prisma.dailyReport.count({ where }),
     prisma.dailyReport.findMany({
       where,
@@ -116,10 +122,13 @@ export default async function ReportsPage({ searchParams }: PageProps<"/admin">)
         user: { select: { name: true, email: true, department: true } },
       },
     }),
+    // Staff filter options: STAFF users only (inactive ones too — their reports are still here).
+    prisma.user.findMany({ where: { role: "STAFF" }, select: { id: true, name: true, email: true, isActive: true } }),
   ]);
+  staff.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.email.localeCompare(b.email));
 
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const hasFilters = Boolean(q || filters.dept || filters.status || range);
+  const hasFilters = Boolean(q || filters.staff || filters.dept || filters.status || range);
   const pageHref = (page: number) => {
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(filters)) if (v && k !== "page") params.set(k, String(v));
@@ -143,7 +152,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/admin">)
       </div>
 
       {/* Keyed so "Clear filters" / back navigation resets the form state. */}
-      <ReportFilters key={JSON.stringify(filters)} initial={filters} />
+      <ReportFilters key={JSON.stringify(filters)} initial={filters} staff={staff} />
 
       {/*
         Keyed without the page so a success notice clears on a new search/filter but survives the page change below.
@@ -169,7 +178,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/admin">)
               {hasFilters ? "No reports match your filters." : "No reports have been saved yet."}
             </p>
             <p className="mt-1 text-sm text-neutral-500">
-              {hasFilters ? "Try a different search, department or date range." : "Reports appear here as soon as staff start their planners."}
+              {hasFilters ? "Try a different search, staff member, department or date range." : "Reports appear here as soon as staff start their planners."}
             </p>
             {hasFilters && (
               <Link href="/admin" className={`${btnSecondary} mt-4`}>

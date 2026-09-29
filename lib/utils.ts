@@ -1,12 +1,14 @@
 // Shared helpers — safe for both server and client code.
 
-export const DEPARTMENTS = ["SALES", "DEVELOPMENT", "MARKETING"] as const;
+export const DEPARTMENTS = ["SALES", "DEVELOPMENT", "MARKETING", "HR", "ACCOUNTS"] as const;
 export type DepartmentValue = (typeof DEPARTMENTS)[number];
 
 export const DEPARTMENT_LABELS: Record<DepartmentValue, string> = {
   SALES: "Sales",
   DEVELOPMENT: "Development",
   MARKETING: "Marketing",
+  HR: "HR",
+  ACCOUNTS: "Accounts",
 };
 
 export function departmentLabel(d: string | null | undefined) {

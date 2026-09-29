@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import { cache } from "react";
 import { prisma } from "./db";
 import { hashPassword, verifyPassword } from "./password";
+import type { DepartmentValue } from "./utils";
 
 export { hashPassword, verifyPassword };
 
@@ -80,7 +81,7 @@ export type SessionUser = {
   name: string;
   email: string;
   role: "STAFF" | "ADMIN";
-  department: "SALES" | "DEVELOPMENT" | "MARKETING" | null;
+  department: DepartmentValue | null;
 };
 
 /** The signed-in user, read fresh from the database on every request (never from the client). */

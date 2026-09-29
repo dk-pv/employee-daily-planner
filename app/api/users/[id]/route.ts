@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { authorizeApi, hashPassword, jsonError, readJson, revokeSessions, userSelect } from "@/lib/auth";
 import { isWriteConflict, serializable } from "@/lib/db";
-import { deleteUserSchema, firstError, updateUserSchema } from "@/lib/validations";
+import { deleteConfirmationSchema, firstError, updateUserSchema } from "@/lib/validations";
 
 /** Admin edits a user: details, role/department, activation, optional password reset. */
 export async function PATCH(request: Request, ctx: RouteContext<"/api/users/[id]">) {
@@ -61,7 +61,7 @@ export async function DELETE(request: Request, ctx: RouteContext<"/api/users/[id
   if (auth.error) return auth.error;
   const { id } = await ctx.params;
 
-  const parsed = deleteUserSchema.safeParse(await readJson(request));
+  const parsed = deleteConfirmationSchema.safeParse(await readJson(request));
   if (!parsed.success) return jsonError(firstError(parsed.error), 400);
   if (id === auth.user.id) return jsonError("You cannot delete your own account.", 400);
 

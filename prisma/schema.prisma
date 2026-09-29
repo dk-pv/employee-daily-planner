@@ -16,6 +16,8 @@ enum Department {
   SALES
   DEVELOPMENT
   MARKETING
+  HR
+  ACCOUNTS
 }
 
 enum ReportStatus {

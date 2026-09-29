@@ -17,7 +17,7 @@ Next.js route handlers are the backend; data lives in Neon PostgreSQL via Prisma
 ```bash
 npm install            # also runs prisma generate
 npm run db:migrate     # prisma migrate dev (use db:deploy in production)
-npm run db:seed        # creates the first admin from SEED_ADMIN_* (idempotent)
+npm run db:seed        # first admin from SEED_ADMIN_* + the staff accounts in prisma/seed.ts (idempotent)
 npm run dev            # http://localhost:3000
 ```
 
@@ -39,7 +39,19 @@ npm run dev            # http://localhost:3000
 
 Then create staff accounts under **User Management**. After first sign-in you can change the admin's email or password
 there (Edit); the seed values are only used when the account is first created. Changing `SEED_ADMIN_EMAIL` later and
-re-seeding creates a *new* admin with that email — rename the existing one in User Management instead.
+re-seeding creates a *new* admin with that email — rename the existing one in User Management instead. Without
+`SEED_ADMIN_EMAIL` the seed skips the admin step.
+
+## Seeded staff accounts
+
+`prisma/seed.ts` also lists the team's staff accounts (`STAFF`), each with password `<name in lower case>1234`
+(stored hashed). Every seed run, matched by email (case-insensitive):
+
+- a missing account is created (STAFF, active, with its department);
+- an existing staff account gets its name, department and password reset to the listed values — so a password changed
+  in User Management is reset too, and that account is signed out; activation status is left as it is;
+- an email that belongs to an admin account is skipped and reported, never changed;
+- users not in the list and all daily reports are never touched. A second run reports every account "already up to date".
 
 ## Rules worth knowing
 
@@ -50,6 +62,10 @@ re-seeding creates a *new* admin with that email — rename the existing one in 
   `lib/validations.ts`): Top Priorities 3, Communications 4 (Call / Email / Direct Meeting), Personal To Do 6,
   Daily Schedules 5, To Do List 18; each row has a text limit (`ROW_TEXT_MAX`), a manager note up to 600 characters.
 - Manager Note and Performance Index are written only by admins (`PATCH /api/reports/:id`); staff see them read-only.
+- Admins can permanently delete a single daily report (`DELETE /api/reports/:id`, confirmed by typing `DELETE`, which
+  the server re-checks). The employee's account and other reports stay. Within the 7-day edit window the employee can
+  start a new report for that date.
+- Departments: Sales, Development, Marketing, HR, Accounts — required for staff, always empty for admins.
 - Sessions are server-side (`Session` table). Logout ends the session; deactivation and password changes sign the
   account out everywhere else. The session cookie is `Secure` in production, so serve the app over HTTPS.
 - Emails are unique and stored lower-case.
@@ -87,8 +103,9 @@ npx prisma db seed
 Remove-Item Env:DATABASE_URL, Env:SEED_ADMIN_EMAIL, Env:SEED_ADMIN_PASSWORD
 ```
 
-Shell variables take precedence over `.env.local` (nothing is written to disk), and the seed skips an email that
-already exists.
+Shell variables take precedence over `.env.local` (nothing is written to disk), and the seed skips an admin email that
+already exists. **The same run also seeds the staff accounts** (see [Seeded staff accounts](#seeded-staff-accounts)):
+it creates the missing ones and resets the name, department and password of existing ones.
 
 ## Checks
 

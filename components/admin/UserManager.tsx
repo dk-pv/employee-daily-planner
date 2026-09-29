@@ -1,18 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
-import {
-  Alert,
-  Badge,
-  btnDanger,
-  btnDangerSubtle,
-  btnPrimary,
-  btnSecondary,
-  fieldInput,
-  fieldLabel,
-} from "@/components/ui/ui";
+import { ConfirmDeleteDialog, Modal } from "@/components/ui/Modal";
+import { Alert, Badge, btnDangerSubtle, btnPrimary, btnSecondary, fieldInput, fieldLabel } from "@/components/ui/ui";
 import { DEPARTMENT_LABELS, DEPARTMENTS, departmentLabel, formatDateTime, type DepartmentValue } from "@/lib/utils";
 import { createUserSchema, updateUserSchema } from "@/lib/validations";
 
@@ -205,13 +197,25 @@ export function UserManager({ users, currentUserId, timeZone }: { users: UserRow
 
       <Modal open={deleting !== null} onClose={() => setDeleting(null)} labelledBy="delete-dialog-title">
         {deleting && (
-          <DeleteUserDialog
+          // The server re-checks the confirmation, permissions, self-delete and last-admin rules.
+          <ConfirmDeleteDialog
             key={deleting.id}
-            user={deleting}
+            url={`/api/users/${deleting.id}`}
+            noun="user"
+            title="Delete User Permanently?"
+            details={[
+              ["Name", deleting.name],
+              ["Email", deleting.email],
+              ["Role", deleting.role],
+              ["Department", departmentLabel(deleting.role === "ADMIN" ? null : deleting.department)],
+            ]}
+            warning="Deleting this user will permanently delete their account and all daily reports associated with this user."
+            confirmLabel="Delete Permanently"
             onCancel={() => setDeleting(null)}
             onDeleted={(message) => {
               setRemovedIds((ids) => [...ids, deleting.id]);
-              setDeleting(null);
+              // Only close this user's dialog, not one opened for another user while the request was in flight.
+              setDeleting((d) => (d?.id === deleting.id ? null : d));
               setNotice({ tone: "success", text: message });
               router.refresh();
             }}
@@ -219,128 +223,6 @@ export function UserManager({ users, currentUserId, timeZone }: { users: UserRow
         )}
       </Modal>
     </>
-  );
-}
-
-/** Native <dialog> kept in sync with React state (focus trap, Esc and backdrop come for free). */
-function Modal({
-  open,
-  onClose,
-  labelledBy,
-  children,
-}: {
-  open: boolean;
-  onClose: () => void;
-  labelledBy: string;
-  children: ReactNode;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    if (open && !ref.current?.open) ref.current?.showModal();
-    if (!open && ref.current?.open) ref.current.close();
-  }, [open]);
-  return (
-    <dialog
-      ref={ref}
-      onClose={onClose}
-      aria-labelledby={labelledBy}
-      className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-xl bg-white p-0 shadow-xl backdrop:bg-neutral-900/40"
-    >
-      {children}
-    </dialog>
-  );
-}
-
-function DeleteUserDialog({
-  user,
-  onCancel,
-  onDeleted,
-}: {
-  user: UserRow;
-  onCancel: () => void;
-  onDeleted: (message: string) => void;
-}) {
-  const [confirmation, setConfirmation] = useState("");
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const confirmed = confirmation === "DELETE";
-
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!confirmed) return;
-    setPending(true);
-    setError(null);
-    try {
-      // The server re-checks the confirmation, permissions, self-delete and last-admin rules.
-      const res = await fetch(`/api/users/${user.id}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirmation }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error ?? "The user could not be deleted. Please try again.");
-      onDeleted(body.message);
-    } catch (err) {
-      setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : "Network error. Please try again.");
-      setPending(false);
-    }
-  }
-
-  const details: [string, string][] = [
-    ["Name", user.name],
-    ["Email", user.email],
-    ["Role", user.role],
-    ["Department", departmentLabel(user.role === "ADMIN" ? null : user.department)],
-  ];
-
-  return (
-    <form onSubmit={onSubmit}>
-      <div className="border-b border-neutral-200 px-5 py-4">
-        <h2 id="delete-dialog-title" className="text-base font-semibold text-red-700">
-          Delete User Permanently?
-        </h2>
-      </div>
-      <div className="space-y-4 px-5 py-4">
-        {error && <Alert tone="error">{error}</Alert>}
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 rounded-md bg-neutral-50 px-4 py-3 text-sm">
-          {details.map(([label, value]) => (
-            <div key={label} className="contents">
-              <dt className="text-neutral-500">{label}</dt>
-              <dd className="break-words font-medium text-neutral-900">{value}</dd>
-            </div>
-          ))}
-        </dl>
-        <div className="rounded-md border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-800">
-          <p className="font-semibold">This action cannot be undone.</p>
-          <p className="mt-1">
-            Deleting this user will permanently delete their account and all daily reports associated with this user.
-          </p>
-        </div>
-        <div>
-          <label htmlFor="delete-confirmation" className={fieldLabel}>
-            Type <span className="font-semibold text-neutral-900">DELETE</span> to confirm
-          </label>
-          <input
-            id="delete-confirmation"
-            value={confirmation}
-            onChange={(e) => setConfirmation(e.target.value)}
-            autoFocus
-            autoComplete="off"
-            autoCapitalize="characters"
-            spellCheck={false}
-            className={fieldInput}
-          />
-        </div>
-      </div>
-      <div className="flex justify-end gap-2 border-t border-neutral-200 px-5 py-3">
-        <button type="button" onClick={onCancel} className={btnSecondary}>
-          Cancel
-        </button>
-        <button type="submit" disabled={!confirmed || pending} className={btnDanger}>
-          {pending ? "Deleting…" : "Delete Permanently"}
-        </button>
-      </div>
-    </form>
   );
 }
 

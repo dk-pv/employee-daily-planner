@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { DeleteReportButton, ReportDeletion } from "@/components/admin/ReportDelete";
 import { ReportFilters, type Filters } from "@/components/admin/ReportFilters";
 import { btnSecondary, ReportStatusBadge } from "@/components/ui/ui";
 import type { Prisma } from "@/generated/prisma/client";
@@ -144,98 +145,119 @@ export default async function ReportsPage({ searchParams }: PageProps<"/admin">)
       {/* Keyed so "Clear filters" / back navigation resets the form state. */}
       <ReportFilters key={JSON.stringify(filters)} initial={filters} />
 
-      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-neutral-600">
-        <p>
-          {total === 0
-            ? "No reports"
-            : `Showing ${(filters.page - 1) * PAGE_SIZE + 1}–${Math.min(filters.page * PAGE_SIZE, total)} of ${total} report${total === 1 ? "" : "s"}`}
-          <span className="text-neutral-400"> · {rangeText}</span>
-        </p>
-      </div>
-
-      {reports.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-neutral-300 bg-white px-6 py-14 text-center">
-          <p className="font-medium text-neutral-800">
-            {hasFilters ? "No reports match your filters." : "No reports have been saved yet."}
+      {/*
+        Keyed without the page so a success notice clears on a new search/filter but survives the page change below.
+        On a page showing a single row, a delete empties it: go back a page instead of refreshing into the
+        past-the-last-page redirect, which would remount the list and drop the notice.
+      */}
+      <ReportDeletion
+        key={JSON.stringify({ ...filters, page: undefined })}
+        previousPageHref={reports.length === 1 && filters.page > 1 ? pageHref(filters.page - 1) : undefined}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-neutral-600">
+          <p>
+            {total === 0
+              ? "No reports"
+              : `Showing ${(filters.page - 1) * PAGE_SIZE + 1}–${Math.min(filters.page * PAGE_SIZE, total)} of ${total} report${total === 1 ? "" : "s"}`}
+            <span className="text-neutral-400"> · {rangeText}</span>
           </p>
-          <p className="mt-1 text-sm text-neutral-500">
-            {hasFilters ? "Try a different search, department or date range." : "Reports appear here as soon as staff start their planners."}
-          </p>
-          {hasFilters && (
-            <Link href="/admin" className={`${btnSecondary} mt-4`}>
-              Clear filters
-            </Link>
-          )}
         </div>
-      ) : (
-        <div className="relative overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <table className="w-full min-w-[860px] text-left text-sm">
-            <thead className="border-b border-neutral-200 bg-neutral-50 text-xs font-medium uppercase tracking-wide text-neutral-500">
-              <tr>
-                <th className="px-4 py-2.5">Employee</th>
-                <th className="px-4 py-2.5">Department</th>
-                <th className="px-4 py-2.5">Date</th>
-                <th className="px-4 py-2.5">Status</th>
-                <th className="px-4 py-2.5 text-right">Planned Hours</th>
-                <th className="px-4 py-2.5 text-right">Worked Hours</th>
-                <th className="px-4 py-2.5 text-center">Performance</th>
-                <th className="px-4 py-2.5">Updated</th>
-                <th className="px-4 py-2.5 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {reports.map((r) => (
-                <tr key={r.id} className="hover:bg-neutral-50">
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-neutral-900">{r.user.name}</p>
-                    <p className="text-xs text-neutral-500">{r.user.email}</p>
-                  </td>
-                  <td className="px-4 py-3 text-neutral-700">{departmentLabel(r.user.department)}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-neutral-700">{formatDate(isoFromDate(r.reportDate))}</td>
-                  <td className="px-4 py-3">
-                    <ReportStatusBadge status={r.status} />
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{formatHours(r.totalPlannedHours.toNumber())}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{formatHours(r.totalWorkedHours.toNumber())}</td>
-                  <td className="px-4 py-3 text-center tabular-nums">
-                    {r.performanceIndex ? `${r.performanceIndex}/5` : <span className="text-neutral-400">—</span>}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-xs text-neutral-500">{formatDateTime(r.updatedAt, tz)}</td>
-                  <td className="px-4 py-3 text-right">
-                    <Link href={`/admin/reports/${r.id}`} className={`${btnSecondary} px-3 py-1.5 text-xs`}>
-                      View
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
 
-      {pages > 1 && (
-        <nav aria-label="Pagination" className="flex items-center justify-between text-sm">
-          <span className="text-neutral-500">
-            Page {filters.page} of {pages}
-          </span>
-          <div className="flex gap-2">
-            {filters.page > 1 ? (
-              <Link href={pageHref(filters.page - 1)} className={btnSecondary}>
-                Previous
+        {reports.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-neutral-300 bg-white px-6 py-14 text-center">
+            <p className="font-medium text-neutral-800">
+              {hasFilters ? "No reports match your filters." : "No reports have been saved yet."}
+            </p>
+            <p className="mt-1 text-sm text-neutral-500">
+              {hasFilters ? "Try a different search, department or date range." : "Reports appear here as soon as staff start their planners."}
+            </p>
+            {hasFilters && (
+              <Link href="/admin" className={`${btnSecondary} mt-4`}>
+                Clear filters
               </Link>
-            ) : (
-              <span className={`${btnSecondary} pointer-events-none opacity-40`}>Previous</span>
-            )}
-            {filters.page < pages ? (
-              <Link href={pageHref(filters.page + 1)} className={btnSecondary}>
-                Next
-              </Link>
-            ) : (
-              <span className={`${btnSecondary} pointer-events-none opacity-40`}>Next</span>
             )}
           </div>
-        </nav>
-      )}
+        ) : (
+          <div className="relative overflow-x-auto rounded-lg border border-neutral-200 bg-white">
+            <table className="w-full min-w-[860px] text-left text-sm">
+              <thead className="border-b border-neutral-200 bg-neutral-50 text-xs font-medium uppercase tracking-wide text-neutral-500">
+                <tr>
+                  <th className="px-3 py-2.5">Employee</th>
+                  <th className="px-3 py-2.5">Department</th>
+                  <th className="px-3 py-2.5">Date</th>
+                  <th className="px-3 py-2.5">Status</th>
+                  <th className="px-3 py-2.5 text-right">Planned Hours</th>
+                  <th className="px-3 py-2.5 text-right">Worked Hours</th>
+                  <th className="px-3 py-2.5 text-center">Performance</th>
+                  <th className="px-3 py-2.5">Updated</th>
+                  <th className="px-3 py-2.5 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100">
+                {reports.map((r) => (
+                  <tr key={r.id} className="hover:bg-neutral-50">
+                    <td className="px-3 py-3">
+                      <p className="font-medium text-neutral-900">{r.user.name}</p>
+                      <p className="text-xs text-neutral-500">{r.user.email}</p>
+                    </td>
+                    <td className="px-3 py-3 text-neutral-700">{departmentLabel(r.user.department)}</td>
+                    <td className="whitespace-nowrap px-3 py-3 text-neutral-700">{formatDate(isoFromDate(r.reportDate))}</td>
+                    <td className="px-3 py-3">
+                      <ReportStatusBadge status={r.status} />
+                    </td>
+                    <td className="px-3 py-3 text-right tabular-nums">{formatHours(r.totalPlannedHours.toNumber())}</td>
+                    <td className="px-3 py-3 text-right tabular-nums">{formatHours(r.totalWorkedHours.toNumber())}</td>
+                    <td className="px-3 py-3 text-center tabular-nums">
+                      {r.performanceIndex ? `${r.performanceIndex}/5` : <span className="text-neutral-400">—</span>}
+                    </td>
+                    {/* Date and time on two lines (like Employee) so View + Delete fit without scrolling. */}
+                    <td className="whitespace-pre px-3 py-3 text-xs text-neutral-500">
+                      {formatDateTime(r.updatedAt, tz).replace(", ", "\n")}
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex justify-end gap-2">
+                        <Link href={`/admin/reports/${r.id}`} className={`${btnSecondary} px-3 py-1.5 text-xs`}>
+                          View
+                        </Link>
+                        <DeleteReportButton
+                          id={r.id}
+                          employee={r.user.name}
+                          email={r.user.email}
+                          date={formatDate(isoFromDate(r.reportDate))}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {pages > 1 && (
+          <nav aria-label="Pagination" className="flex items-center justify-between text-sm">
+            <span className="text-neutral-500">
+              Page {filters.page} of {pages}
+            </span>
+            <div className="flex gap-2">
+              {filters.page > 1 ? (
+                <Link href={pageHref(filters.page - 1)} className={btnSecondary}>
+                  Previous
+                </Link>
+              ) : (
+                <span className={`${btnSecondary} pointer-events-none opacity-40`}>Previous</span>
+              )}
+              {filters.page < pages ? (
+                <Link href={pageHref(filters.page + 1)} className={btnSecondary}>
+                  Next
+                </Link>
+              ) : (
+                <span className={`${btnSecondary} pointer-events-none opacity-40`}>Next</span>
+              )}
+            </div>
+          </nav>
+        )}
+      </ReportDeletion>
     </div>
   );
 }

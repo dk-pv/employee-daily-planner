@@ -32,7 +32,7 @@ const userFields = {
   role: z.enum(ROLES, "Select a valid role."),
   // Missing, "" (the form's empty option) and null all mean "no department" -> stored as null.
   department: z
-    .union([z.enum(DEPARTMENTS), z.literal("")], "Department must be Sales, Development or Marketing.")
+    .union([z.enum(DEPARTMENTS), z.literal("")], "Select a valid department.")
     .nullish()
     .transform((v) => v || null),
   isActive: z.boolean(),
@@ -70,8 +70,8 @@ export const updateUserSchema = z
   .superRefine(requireStaffDepartment)
   .transform(staffOnlyDepartment);
 
-/** Hard delete must be confirmed by typing DELETE — checked on the server, not just in the dialog. */
-export const deleteUserSchema = z.object({
+/** Hard deletes (users, daily reports) must be confirmed by typing DELETE — checked on the server, not just in the dialog. */
+export const deleteConfirmationSchema = z.object({
   confirmation: z.literal("DELETE", 'Type "DELETE" to confirm.'),
 });
 

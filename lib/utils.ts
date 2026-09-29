@@ -135,21 +135,33 @@ function minutesOf(time: string) {
   return h * 60 + m;
 }
 
+/** Break 1 + Break 2 + Break 3, in minutes; an empty break counts as 0. */
+export function totalBreakMinutes(...breaks: (number | null | undefined)[]) {
+  return breaks.reduce<number>((total, b) => total + (b ?? 0), 0);
+}
+
 /**
- * Net office hours = (OUT − IN) − BREAK.
- * Returns hours = null when IN or OUT is missing; error when the combination is invalid.
+ * Office time in whole minutes (times are 24-hour "HH:MM", so AM/PM is already resolved):
+ * office = OUT − IN, net = office − total break. Nulls while IN or OUT is missing; error when impossible.
  */
-export function calcNetOfficeHours(
+export function calcOfficeTime(
   officeIn: string | null | undefined,
   officeOut: string | null | undefined,
-  breakMinutes: number | null | undefined,
-): { hours: number | null; error: string | null } {
-  if (!officeIn || !officeOut) return { hours: null, error: null };
-  const span = minutesOf(officeOut) - minutesOf(officeIn);
-  if (span <= 0) return { hours: null, error: "OUT time must be after IN time." };
-  const net = span - (breakMinutes ?? 0);
-  if (net < 0) return { hours: null, error: "Break cannot be longer than the time between IN and OUT." };
-  return { hours: round2(net / 60), error: null };
+  breakMinutes: number,
+): { officeMinutes: number | null; netMinutes: number | null; error: string | null } {
+  if (!officeIn || !officeOut) return { officeMinutes: null, netMinutes: null, error: null };
+  const officeMinutes = minutesOf(officeOut) - minutesOf(officeIn);
+  if (officeMinutes <= 0) return { officeMinutes: null, netMinutes: null, error: "OUT time must be after IN time." };
+  const netMinutes = officeMinutes - breakMinutes;
+  if (netMinutes < 0) return { officeMinutes, netMinutes: null, error: "Breaks cannot be longer than the time between IN and OUT." };
+  return { officeMinutes, netMinutes, error: null };
+}
+
+/** Whole minutes for display: 555 -> "9 h 15 min", 480 -> "8 h 00 min", 30 -> "30 min". Never decimal hours. */
+export function formatMinutes(minutes: number) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h === 0 ? `${m} min` : `${h} h ${String(m).padStart(2, "0")} min`;
 }
 
 export function sumHours(values: (number | null | undefined)[]) {

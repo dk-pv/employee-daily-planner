@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DEPARTMENTS, calcNetOfficeHours, isValidISODate } from "./utils";
+import { DEPARTMENTS, calcOfficeTime, isValidISODate, totalBreakMinutes } from "./utils";
 
 // ---------------------------------------------------------------------------
 // Auth
@@ -131,6 +131,23 @@ const hours = z
   .max(24, "Hours cannot exceed 24.")
   .nullable();
 const rating = z.number().int().min(1, "Ratings are 1–5.").max(5, "Ratings are 1–5.").nullable();
+const breakField = z
+  .number("Break must be a number of minutes.")
+  .int("Break must be whole minutes.")
+  .min(0, "Break cannot be negative.")
+  .max(720, "Break cannot exceed 12 hours.")
+  .nullable();
+/** Job role sits in the planner header; the limit keeps it on one line there. */
+export const JOB_ROLE_MAX = 40;
+/** A break reason is one short line; the limit keeps it fully visible on the printed A4 page. */
+export const BREAK_REASON_MAX = 25;
+const breakReason = z
+  .string()
+  .trim()
+  .max(BREAK_REASON_MAX, `Break reason is too long (${BREAK_REASON_MAX} characters max).`)
+  .transform((v) => v || null)
+  .nullable()
+  .default(null);
 const list = <T extends z.ZodType>(item: T, section: keyof typeof ROW_LIMITS) =>
   z.array(item).max(ROW_LIMITS[section], `${SECTION_LABELS[section]}: at most ${ROW_LIMITS[section]} rows.`);
 
@@ -153,25 +170,33 @@ export type CommunicationItem = z.infer<typeof communicationItem>;
 // kept untouched); saves simply never send or write it.
 export const reportContentSchema = z
   .object({
+    // Required for every save (draft or submit), including reports started before it existed.
+    jobRole: z
+      .string("Job role is required.")
+      .trim()
+      .min(1, "Job role is required.")
+      .max(JOB_ROLE_MAX, `Job role is too long (${JOB_ROLE_MAX} characters max).`),
     topPriorities: list(checkItem("topPriorities"), "topPriorities"),
     callsEmails: list(communicationItem, "callsEmails"),
     personalTodo: list(checkItem("personalTodo"), "personalTodo"),
     dailySchedules: list(scheduleItem, "dailySchedules"),
     officeIn: time.nullable(),
     officeOut: time.nullable(),
-    breakMinutes: z
-      .number("Break must be a number of minutes.")
-      .int("Break must be whole minutes.")
-      .min(0, "Break cannot be negative.")
-      .max(720, "Break cannot exceed 12 hours.")
-      .nullable(),
+    // Break 1, 2 and 3. Break 2/3 default to empty so a planner opened before they existed still saves.
+    breakMinutes: breakField,
+    break2Minutes: breakField.default(null),
+    break3Minutes: breakField.default(null),
+    break1Reason: breakReason,
+    break2Reason: breakReason,
+    break3Reason: breakReason,
     productivity: rating,
     mood: rating,
     health: rating,
     tasks: list(taskItem, "tasks"),
   })
   .superRefine((v, ctx) => {
-    const { error } = calcNetOfficeHours(v.officeIn, v.officeOut, v.breakMinutes);
+    const breaks = totalBreakMinutes(v.breakMinutes, v.break2Minutes, v.break3Minutes);
+    const { error } = calcOfficeTime(v.officeIn, v.officeOut, breaks);
     if (error) ctx.addIssue({ code: "custom", path: ["officeOut"], message: error });
     // A written communication must say what kind it is.
     v.callsEmails.forEach((c, i) => {

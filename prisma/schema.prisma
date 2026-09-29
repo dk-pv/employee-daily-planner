@@ -58,13 +58,22 @@ model DailyReport {
   userId            String
   user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   reportDate        DateTime     @db.Date
+  // Required on every save from now on; reports saved before it existed have none.
+  jobRole           String?
   topPriorities     Json         @default("[]")
   callsEmails       Json         @default("[]")
   personalTodo      Json         @default("[]")
   dailySchedules    Json         @default("[]")
   officeIn          String?
   officeOut         String?
+  // Breaks in whole minutes. breakMinutes is Break 1 (it was the only break before Break 2 and 3 were added).
   breakMinutes      Int?
+  break2Minutes     Int?
+  break3Minutes     Int?
+  // Optional reason for each break (short text).
+  break1Reason      String?
+  break2Reason      String?
+  break3Reason      String?
   netOfficeHours    Decimal?     @db.Decimal(5, 2)
   productivity      Int?
   mood              Int?

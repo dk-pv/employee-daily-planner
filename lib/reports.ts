@@ -31,6 +31,7 @@ export function serializeReport(r: DailyReport): PlannerReport {
     editableUntil: isoFromDate(r.editableUntil),
     // JSON columns are only ever written through reportContentSchema.
     content: {
+      jobRole: r.jobRole ?? "",
       topPriorities: r.topPriorities as CheckItem[],
       callsEmails: r.callsEmails as CommunicationItem[],
       personalTodo: r.personalTodo as CheckItem[],
@@ -38,6 +39,11 @@ export function serializeReport(r: DailyReport): PlannerReport {
       officeIn: r.officeIn,
       officeOut: r.officeOut,
       breakMinutes: r.breakMinutes,
+      break2Minutes: r.break2Minutes,
+      break3Minutes: r.break3Minutes,
+      break1Reason: r.break1Reason,
+      break2Reason: r.break2Reason,
+      break3Reason: r.break3Reason,
       productivity: r.productivity,
       mood: r.mood,
       health: r.health,

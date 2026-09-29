@@ -2,8 +2,9 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { Controller, useFieldArray, useWatch, type Control, type UseFormRegister, type UseFormRegisterReturn } from "react-hook-form";
-import { calcNetOfficeHours, formatHours, sumHours } from "@/lib/utils";
+import { calcOfficeTime, formatHours, formatMinutes, sumHours, totalBreakMinutes } from "@/lib/utils";
 import {
+  BREAK_REASON_MAX,
   COMMUNICATION_LABELS,
   COMMUNICATION_TYPES,
   ROW_LIMITS,
@@ -20,6 +21,7 @@ import { TimePicker } from "./TimePicker";
 export type CheckRow = { text: string; done: boolean };
 export type CommunicationRow = { type: CommunicationType | ""; text: string; done: boolean };
 export type FormValues = {
+  jobRole: string;
   topPriorities: CheckRow[];
   /** Communications table (Call / Email / Direct Meeting); stored in the existing callsEmails column. */
   callsEmails: CommunicationRow[];
@@ -28,7 +30,13 @@ export type FormValues = {
   tasks: { text: string; done: boolean; planned: string; worked: string }[];
   officeIn: string;
   officeOut: string;
+  /** Break 1, 2 and 3, in minutes. */
   breakMinutes: string;
+  break2Minutes: string;
+  break3Minutes: string;
+  break1Reason: string;
+  break2Reason: string;
+  break3Reason: string;
   productivity: number | null;
   mood: number | null;
   health: number | null;
@@ -503,56 +511,91 @@ function Total({ label: text, value }: { label: string; value: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Office hours: IN / OUT (12-hour pickers) / BREAK minutes, with live NET OFFICE HOURS
+// Office hours: IN / OUT (12-hour pickers) / Break 1–3 (minutes + reason), with live totals in hours + minutes
 // ---------------------------------------------------------------------------
 
+const BREAKS = ["breakMinutes", "break2Minutes", "break3Minutes"] as const;
+const BREAK_REASONS = ["break1Reason", "break2Reason", "break3Reason"] as const;
+// Grid rows of Break 1–3, written out so Tailwind generates the classes.
+const BREAK_ROWS = ["row-start-3", "row-start-4", "row-start-5"] as const;
+/** Office-box rows are tighter than the list rows: 1px instead of 3px vertical padding. */
+const tightInput = lineInput.replace("py-[3px]", "py-px");
+
 export function OfficeHours({ control, register }: Pick<ListProps, "control" | "register">) {
-  const [officeIn, officeOut, breakRaw] = useWatch({ control, name: ["officeIn", "officeOut", "breakMinutes"] });
-  const breakMinutes = breakRaw.trim() === "" ? null : Number(breakRaw);
-  const breakInvalid = breakMinutes != null && (!Number.isInteger(breakMinutes) || breakMinutes < 0);
-  const net = calcNetOfficeHours(officeIn || null, officeOut || null, breakInvalid ? null : breakMinutes);
-  const error = breakInvalid ? "Break must be whole minutes, 0 or more." : net.error;
-  const row = "flex items-center gap-2";
-  const rowLabel = `${label} w-[7.5rem] shrink-0 print:w-[5.2rem]`;
+  const [officeIn, officeOut, ...breakRaw] = useWatch({ control, name: ["officeIn", "officeOut", ...BREAKS] });
+  const breaks = breakRaw.map((s) => (s.trim() === "" ? null : Number(s)));
+  const breakInvalid = breaks.map((b) => b != null && (!Number.isInteger(b) || b < 0 || b > 720));
+  const anyInvalid = breakInvalid.some(Boolean);
+  // Everything is whole minutes: office = OUT − IN, total break = 1 + 2 + 3, net = office − total break.
+  const totalBreak = totalBreakMinutes(...breaks);
+  const time = calcOfficeTime(officeIn || null, officeOut || null, anyInvalid ? 0 : totalBreak);
+  const error = anyInvalid ? "Breaks must be whole minutes, 0 or more." : time.error;
+  const showBreak = !anyInvalid && (breaks.some((b) => b != null) || time.officeMinutes != null);
+  const row = "flex min-w-0 items-center gap-1.5";
+  const entryLabel = `${label} w-[2.9rem] shrink-0`;
+  const resultLabel = `${label} w-[6.5rem] shrink-0 print:w-[5.2rem]`;
+  const result = "min-w-0 flex-1 border-b border-neutral-400 px-1 py-px text-[13.5px] leading-5 tabular-nums print:py-0.5 print:text-[10px]";
 
   return (
     <div>
-      <div className={row}>
-        <span className={rowLabel}>IN</span>
-        <Controller
-          control={control}
-          name="officeIn"
-          render={({ field }) => <TimePicker value={field.value} onChange={field.onChange} label="IN" />}
-        />
-      </div>
-      <div className={row}>
-        <span className={rowLabel}>OUT</span>
-        <Controller
-          control={control}
-          name="officeOut"
-          render={({ field }) => <TimePicker value={field.value} onChange={field.onChange} label="OUT" invalid={!!net.error} />}
-        />
-      </div>
-      <label className={row}>
-        <span className={rowLabel}>BREAK</span>
-        <input
-          type="number"
-          inputMode="numeric"
-          min={0}
-          max={720}
-          step={1}
-          {...register("breakMinutes")}
-          aria-label="Break in minutes"
-          aria-invalid={breakInvalid}
-          className={`${lineInput} max-w-20 tabular-nums`}
-        />
-        <span className="text-[11px] text-neutral-500 print:text-[8px]">min</span>
-      </label>
-      <div className={row}>
-        <span className={rowLabel}>NET OFFICE HOURS</span>
-        <span className="min-w-0 flex-1 border-b border-neutral-400 px-1 py-[3px] text-[13.5px] font-semibold leading-5 tabular-nums print:py-0.5 print:text-[10px]" aria-live="polite">
-          {net.hours == null ? "" : `${formatHours(net.hours)} h`}
-        </span>
+      {/* Entries on the left (IN, OUT, Break 1–3); results on the right, NET level with Break 3. */}
+      <div className="grid grid-cols-[minmax(0,1fr)_12rem] gap-x-4 print:grid-cols-[minmax(0,1fr)_10.5rem]">
+        <div className={`${row} col-start-1 row-start-1`}>
+          <span className={entryLabel}>IN</span>
+          <Controller
+            control={control}
+            name="officeIn"
+            render={({ field }) => <TimePicker value={field.value} onChange={field.onChange} label="IN" />}
+          />
+        </div>
+        <div className={`${row} col-start-1 row-start-2`}>
+          <span className={entryLabel}>OUT</span>
+          <Controller
+            control={control}
+            name="officeOut"
+            render={({ field }) => <TimePicker value={field.value} onChange={field.onChange} label="OUT" invalid={!!time.error} />}
+          />
+        </div>
+        {BREAKS.map((name, i) => (
+          <div key={name} className={`${row} col-start-1 ${BREAK_ROWS[i]}`}>
+            <span className={entryLabel}>BREAK {i + 1}</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={720}
+              step={1}
+              {...register(name)}
+              placeholder="Minutes"
+              aria-label={`Break ${i + 1} in minutes`}
+              aria-invalid={breakInvalid[i]}
+              className={`${tightInput} max-w-12 shrink-0 text-center tabular-nums placeholder:text-[10.5px]`}
+            />
+            <span className="shrink-0 text-[11px] text-neutral-500 print:text-[8px]">min</span>
+            <input
+              type="text"
+              {...register(BREAK_REASONS[i])}
+              maxLength={BREAK_REASON_MAX}
+              placeholder="Reason"
+              aria-label={`Break ${i + 1} reason`}
+              className={`${tightInput} flex-1`}
+            />
+          </div>
+        ))}
+        <div className={`${row} col-start-2 row-start-1`}>
+          <span className={resultLabel}>TOTAL OFFICE TIME</span>
+          <span className={result}>{time.officeMinutes == null ? "" : formatMinutes(time.officeMinutes)}</span>
+        </div>
+        <div className={`${row} col-start-2 row-start-2`}>
+          <span className={resultLabel}>TOTAL BREAK</span>
+          <span className={result}>{showBreak ? formatMinutes(totalBreak) : ""}</span>
+        </div>
+        <div className={`${row} col-start-2 row-start-5`}>
+          <span className={resultLabel}>NET OFFICE HOURS</span>
+          <span className={`${result} font-semibold`} aria-live="polite">
+            {time.netMinutes == null ? "" : formatMinutes(time.netMinutes)}
+          </span>
+        </div>
       </div>
       {error && (
         <p role="alert" className="pt-0.5 text-[11px] text-red-700 print:hidden">

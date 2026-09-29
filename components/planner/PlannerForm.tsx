@@ -11,6 +11,7 @@ import {
   COMMUNICATION_TYPES,
   MANAGER_NOTE_MAX,
   reportContentSchema,
+  JOB_ROLE_MAX,
   ROW_LIMITS,
   SECTION_LABELS,
   type ReportContent,
@@ -48,6 +49,7 @@ function communicationRows(saved: ReportContent["callsEmails"]): CommunicationRo
 function toFormValues(c: ReportContent | null): FormValues {
   const check = () => ({ text: "", done: false });
   return {
+    jobRole: c?.jobRole ?? "",
     topPriorities: pad(c?.topPriorities ?? [], START_ROWS.topPriorities, check),
     callsEmails: communicationRows(c?.callsEmails ?? []),
     personalTodo: pad(c?.personalTodo ?? [], START_ROWS.personalTodo, check),
@@ -60,6 +62,11 @@ function toFormValues(c: ReportContent | null): FormValues {
     officeIn: c?.officeIn ?? "",
     officeOut: c?.officeOut ?? "",
     breakMinutes: c?.breakMinutes?.toString() ?? "",
+    break2Minutes: c?.break2Minutes?.toString() ?? "",
+    break3Minutes: c?.break3Minutes?.toString() ?? "",
+    break1Reason: c?.break1Reason ?? "",
+    break2Reason: c?.break2Reason ?? "",
+    break3Reason: c?.break3Reason ?? "",
     productivity: c?.productivity ?? null,
     mood: c?.mood ?? null,
     health: c?.health ?? null,
@@ -71,18 +78,30 @@ const num = (s: string) => (s.trim() === "" ? null : Number(s));
 function toContent(v: FormValues): ReportContent {
   return {
     ...v,
+    jobRole: v.jobRole.trim(),
     tasks: v.tasks.map((t) => ({ text: t.text, done: t.done, planned: num(t.planned), worked: num(t.worked) })),
     officeIn: v.officeIn || null,
     officeOut: v.officeOut || null,
     breakMinutes: num(v.breakMinutes),
+    break2Minutes: num(v.break2Minutes),
+    break3Minutes: num(v.break3Minutes),
+    break1Reason: v.break1Reason.trim() || null,
+    break2Reason: v.break2Reason.trim() || null,
+    break3Reason: v.break3Reason.trim() || null,
   };
 }
 
 const SECTION_NAMES: Record<string, string> = {
   ...SECTION_LABELS,
+  jobRole: "Job role",
   officeIn: "Office Hours",
   officeOut: "Office Hours",
   breakMinutes: "Office Hours",
+  break2Minutes: "Office Hours",
+  break3Minutes: "Office Hours",
+  break1Reason: "Office Hours",
+  break2Reason: "Office Hours",
+  break3Reason: "Office Hours",
   productivity: "Productivity",
   mood: "Mood",
   health: "Health",
@@ -150,7 +169,7 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
   const overLimit = rowsOverLimit(report?.content ?? null);
   const { box: canvas, zoom } = useCanvasZoom();
 
-  const { control, register, getValues, subscribe } = useForm<FormValues>({
+  const { control, register, getValues, setFocus, subscribe } = useForm<FormValues>({
     defaultValues: toFormValues(initialReport?.content ?? null),
   });
 
@@ -171,8 +190,13 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
         const content = toContent(getValues());
         const check = reportContentSchema.safeParse(content);
         if (!check.success) {
+          const jobRoleOnly = check.error.issues.every((i) => i.path[0] === "jobRole");
+          // Autosave waits quietly for the required Job Role (the unsaved-changes guard still protects the work);
+          // Save Draft and Submit say what is missing.
+          if (!announce && jobRoleOnly) return false;
           setSaveState("error");
           setNotice({ tone: "error", text: describeIssue(check.error) });
+          if (check.error.issues[0]?.path[0] === "jobRole") setFocus("jobRole");
           return false;
         }
         setSaveState("saving");
@@ -202,7 +226,7 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
       queue.current = result.catch(() => undefined);
       return result;
     },
-    [date, getValues],
+    [date, getValues, setFocus],
   );
 
   // Track edits; debounce an autosave for drafts.
@@ -330,10 +354,29 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
               DAILY PLANNER
             </h1>
             <div className="mt-2 border-t-[1.5px] border-neutral-900 print:mt-1" />
-            <div className="mt-3 grid grid-cols-[1.42fr_1.17fr_1fr] gap-6 print:mt-2 print:gap-4">
-              <HeaderField label="EMPLOYEE">{employee.name}</HeaderField>
-              <HeaderField label="DEPARTMENT">{departmentLabel(employee.department)}</HeaderField>
-              <HeaderField label="DATE">
+            {/* Two rows — EMPLOYEE | JOB ROLE, then DEPARTMENT | DATE — with fixed label widths so the values line up. */}
+            <div className="mt-3 grid grid-cols-2 gap-x-8 gap-y-2.5 print:mt-2 print:gap-x-6 print:gap-y-1.5">
+              <HeaderField label="EMPLOYEE" labelClass={HEADER_LABEL_LEFT}>
+                {employee.name}
+              </HeaderField>
+              <HeaderField label="JOB ROLE" labelClass={HEADER_LABEL_RIGHT} htmlFor={readOnly ? undefined : "job-role"} required={!readOnly}>
+                {readOnly ? (
+                  report?.content.jobRole || "—"
+                ) : (
+                  <input
+                    id="job-role"
+                    {...register("jobRole")}
+                    required
+                    maxLength={JOB_ROLE_MAX}
+                    placeholder="Ex: Videographer, Developer ..."
+                    className="w-full min-w-0 bg-transparent placeholder:font-normal placeholder:text-neutral-400 focus:outline-none print:placeholder:text-transparent"
+                  />
+                )}
+              </HeaderField>
+              <HeaderField label="DEPARTMENT" labelClass={HEADER_LABEL_LEFT}>
+                {departmentLabel(employee.department)}
+              </HeaderField>
+              <HeaderField label="DATE" labelClass={HEADER_LABEL_RIGHT}>
                 {isAdmin ? (
                   formatDate(date)
                 ) : (
@@ -359,30 +402,29 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
               <CheckList {...lists} name="topPriorities" title="TOP PRIORITIES" itemLabel="Priority" className="grow-[2]" />
               <CommunicationsTable {...lists} className="grow-[3]" />
               <CheckList {...lists} name="personalTodo" title="PERSONAL TO DO LIST" itemLabel="To-do" className="grow" />
-              <ScheduleList {...lists} />
-              <div className="flex grow flex-col gap-1">
-                <Section title="OFFICE HOURS TRACKER" disabled={readOnly} className="grow">
-                  <OfficeHours control={control} register={register} />
-                </Section>
-                <Section title="HOW WILL YOU RATE YOUR DAY?" disabled={readOnly}>
-                  <div className="space-y-1 print:space-y-1">
-                    {(["productivity", "mood", "health"] as const).map((key) => (
-                      <div key={key} className="flex items-center justify-between gap-2">
-                        <span className="text-[10px] font-bold uppercase tracking-[0.04em] print:text-[8px]">{key}</span>
-                        <Controller
-                          control={control}
-                          name={key}
-                          render={({ field }) => <Scale label={SECTION_NAMES[key]} value={field.value} onChange={field.onChange} />}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </Section>
-              </div>
+              <ScheduleList {...lists} className="grow" />
+              <Section title="HOW WILL YOU RATE YOUR DAY?" disabled={readOnly}>
+                <div className="space-y-1 print:space-y-1">
+                  {(["productivity", "mood", "health"] as const).map((key) => (
+                    <div key={key} className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.04em] print:text-[8px]">{key}</span>
+                      <Controller
+                        control={control}
+                        name={key}
+                        render={({ field }) => <Scale label={SECTION_NAMES[key]} value={field.value} onChange={field.onChange} />}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </Section>
             </div>
 
             <div className="flex min-w-0 flex-col gap-3 print:gap-1.5">
               <TaskTable {...lists} className="flex-1" />
+              {/* Uses the room under the To Do rows; the To Do box gives up that space, not the page. */}
+              <Section title="OFFICE HOURS TRACKER" disabled={readOnly} className="shrink-0">
+                <OfficeHours control={control} register={register} />
+              </Section>
               {/* Manager Note + Performance Index: written by the admin (PATCH /api/reports/[id]), read-only for staff. */}
               <Section title="MANAGER NOTE" className="shrink-0">
                 <div className="flex items-center gap-3 py-1 print:py-0">
@@ -483,12 +525,38 @@ const ruled =
 const ruledPrint =
   "print:h-auto print:min-h-24 print:bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_15px,#a3a3a3_15px,#a3a3a3_16px)] print:text-[9.5px] print:leading-4";
 
-function HeaderField({ label, children }: { label: string; children: ReactNode }) {
+// Header label columns: wide enough for "DEPARTMENT:" (left) and "JOB ROLE*:" (right).
+const HEADER_LABEL_LEFT = "w-[5.2rem] print:w-[4.2rem]";
+const HEADER_LABEL_RIGHT = "w-[4.4rem] print:w-[3.6rem]";
+
+function HeaderField({
+  label,
+  labelClass = "",
+  htmlFor,
+  required,
+  children,
+}: {
+  label: string;
+  labelClass?: string;
+  htmlFor?: string;
+  required?: boolean;
+  children: ReactNode;
+}) {
+  const Label = htmlFor ? "label" : "span";
   return (
     <div className="flex min-w-0 items-end gap-2">
-      <span className="shrink-0 pb-1 text-[10px] font-bold uppercase tracking-[0.04em] text-neutral-900 print:text-[8px]">
-        {label}:
-      </span>
+      <Label
+        htmlFor={htmlFor}
+        className={`shrink-0 pb-1 text-[10px] font-bold uppercase tracking-[0.04em] text-neutral-900 print:text-[8px] ${labelClass}`}
+      >
+        {label}
+        {required && (
+          <span aria-hidden className="text-red-700 print:hidden">
+            *
+          </span>
+        )}
+        :
+      </Label>
       <span className="min-w-0 flex-1 truncate border-b border-neutral-900 pb-1 text-[13.5px] font-medium text-neutral-900 print:text-[10.5px]">
         {children}
       </span>

@@ -147,7 +147,8 @@ function useCanvasZoom() {
 type Notice = { tone: "success" | "error"; text: string } | null;
 
 type Props = {
-  mode: "staff" | "admin";
+  /** "print": the admin print page — read-only, the A4 sheet only (no notices or action bar). */
+  mode: "staff" | "admin" | "print";
   employee: { name: string; department: string | null };
   date: string;
   report: PlannerReport | null;
@@ -161,7 +162,8 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
   const [navigating, startNavigation] = useTransition();
   const [report, setReport] = useState(initialReport);
   const isAdmin = mode === "admin";
-  const readOnly = isAdmin || lockReason !== null;
+  const printOnly = mode === "print";
+  const readOnly = mode !== "staff" || lockReason !== null;
   const submitted = report?.status === "SUBMITTED";
   // Drafts autosave; a submitted report changes only when the employee clicks Update.
   const autosave = !readOnly && !submitted;
@@ -323,8 +325,8 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
   const lists = { control, register, readOnly, onRowsChange: markChanged };
 
   return (
-    <div className="mx-auto w-full max-w-[948px] px-4 pb-28 pt-4 sm:px-6 print:max-w-none print:p-0">
-      <div className="mb-3 space-y-2 print:hidden">
+    <div className={`mx-auto w-full max-w-[948px] px-4 pt-4 sm:px-6 print:max-w-none print:p-0 ${printOnly ? "pb-4" : "pb-28"}`}>
+      <div className={`mb-3 space-y-2 print:hidden ${printOnly ? "hidden" : ""}`}>
         {isAdmin && <p className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">Staff report · read-only</p>}
         {!isAdmin && lockReason && (
           <Alert tone="warning">{report ? lockReason : `No report found for this date. ${lockReason}`}</Alert>
@@ -377,7 +379,7 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
                 {departmentLabel(employee.department)}
               </HeaderField>
               <HeaderField label="DATE" labelClass={HEADER_LABEL_RIGHT}>
-                {isAdmin ? (
+                {mode !== "staff" ? (
                   formatDate(date)
                 ) : (
                   <>
@@ -464,56 +466,58 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
         </article>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-10 border-t border-neutral-200 bg-white/95 backdrop-blur print:hidden">
-        <div className="mx-auto flex max-w-[948px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2.5 sm:px-6">
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            {/* Messages live in the fixed bar so they are seen wherever the user has scrolled. */}
-            {notice && (
-              <p
-                role={notice.tone === "error" ? "alert" : "status"}
-                className={`text-sm font-medium ${notice.tone === "error" ? "text-red-700" : "text-emerald-700"}`}
-              >
-                {notice.text}
-              </p>
-            )}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-600" aria-live="polite">
-              <ReportStatusBadge status={report?.status ?? null} />
-              {report && <span>Last updated: {formatDateTime(report.updatedAt, timeZone)}</span>}
-              {!isAdmin && report && !lockReason && <span>Editable until {formatDate(report.editableUntil)}</span>}
-              {isAdmin && (
-                <span>
-                  {report?.review?.reviewedAt ? `Reviewed: ${formatDateTime(report.review.reviewedAt, timeZone)}` : "Not reviewed yet"}
-                  {reviewDirty && " · unsaved review changes"}
-                </span>
+      {!printOnly && (
+        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-neutral-200 bg-white/95 backdrop-blur print:hidden">
+          <div className="mx-auto flex max-w-[948px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2.5 sm:px-6">
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              {/* Messages live in the fixed bar so they are seen wherever the user has scrolled. */}
+              {notice && (
+                <p
+                  role={notice.tone === "error" ? "alert" : "status"}
+                  className={`text-sm font-medium ${notice.tone === "error" ? "text-red-700" : "text-emerald-700"}`}
+                >
+                  {notice.text}
+                </p>
               )}
-              {!readOnly && saveLabel && (
-                <span className={saveState === "error" ? "font-medium text-red-700" : "text-neutral-500"}>{saveLabel}</span>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-600" aria-live="polite">
+                <ReportStatusBadge status={report?.status ?? null} />
+                {report && <span>Last updated: {formatDateTime(report.updatedAt, timeZone)}</span>}
+                {!isAdmin && report && !lockReason && <span>Editable until {formatDate(report.editableUntil)}</span>}
+                {isAdmin && (
+                  <span>
+                    {report?.review?.reviewedAt ? `Reviewed: ${formatDateTime(report.review.reviewedAt, timeZone)}` : "Not reviewed yet"}
+                    {reviewDirty && " · unsaved review changes"}
+                  </span>
+                )}
+                {!readOnly && saveLabel && (
+                  <span className={saveState === "error" ? "font-medium text-red-700" : "text-neutral-500"}>{saveLabel}</span>
+                )}
+                {navigating && <span>Loading…</span>}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => window.print()} className={btnSecondary}>
+                Print
+              </button>
+              {!readOnly && !submitted && (
+                <button type="button" onClick={() => void save("draft", true)} disabled={saveState === "saving"} className={btnSecondary}>
+                  Save Draft
+                </button>
               )}
-              {navigating && <span>Loading…</span>}
+              {!readOnly && (
+                <button type="button" onClick={() => void onSubmit()} disabled={saveState === "saving"} className={btnPrimary}>
+                  {submitted ? "UPDATE DAILY REPORT" : "SUBMIT DAILY REPORT"}
+                </button>
+              )}
+              {isAdmin && report && (
+                <button type="button" onClick={() => void saveReview()} disabled={!reviewDirty || reviewSaving} className={btnPrimary}>
+                  {reviewSaving ? "Saving…" : "Save Review"}
+                </button>
+              )}
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => window.print()} className={btnSecondary}>
-              Print
-            </button>
-            {!readOnly && !submitted && (
-              <button type="button" onClick={() => void save("draft", true)} disabled={saveState === "saving"} className={btnSecondary}>
-                Save Draft
-              </button>
-            )}
-            {!readOnly && (
-              <button type="button" onClick={() => void onSubmit()} disabled={saveState === "saving"} className={btnPrimary}>
-                {submitted ? "UPDATE DAILY REPORT" : "SUBMIT DAILY REPORT"}
-              </button>
-            )}
-            {isAdmin && report && (
-              <button type="button" onClick={() => void saveReview()} disabled={!reviewDirty || reviewSaving} className={btnPrimary}>
-                {reviewSaving ? "Saving…" : "Save Review"}
-              </button>
-            )}
-          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

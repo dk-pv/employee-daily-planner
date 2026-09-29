@@ -127,6 +127,26 @@ input[type="number"] {
     line-clamp: var(--print-lines, 2);
     overflow: hidden;
   }
+  /*
+   * Admin print page (/admin/print): one A4 page per report. Each report starts a new page, and its
+   * sheet is capped to the page so it can never spill into the next report's page.
+   */
+  body:has(.print-batch) {
+    display: block; /* forced page breaks are reliable in block flow, not every browser fragments flex */
+  }
+  .print-page {
+    break-inside: avoid;
+    break-after: page;
+    page-break-after: always;
+  }
+  .print-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+  .print-batch .a4-sheet {
+    height: 295mm;
+    overflow: hidden;
+  }
   /* Keep filled rating circles / markers black on paper. */
   * {
     -webkit-print-color-adjust: exact;

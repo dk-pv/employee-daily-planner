@@ -1,6 +1,15 @@
 import "server-only";
-import type { DailyReport } from "@/generated/prisma/client";
-import { addDaysISO, EDIT_WINDOW_DAYS, isoFromDate, todayISO } from "./utils";
+import type { DailyReport, Prisma } from "@/generated/prisma/client";
+import {
+  addDaysISO,
+  dateFromISO,
+  DEPARTMENTS,
+  EDIT_WINDOW_DAYS,
+  isoFromDate,
+  isValidISODate,
+  todayISO,
+  type DepartmentValue,
+} from "./utils";
 import type { CheckItem, CommunicationItem, ReportContent, ScheduleItem, TaskItem } from "./validations";
 
 export type PlannerReport = {
@@ -83,5 +92,35 @@ export function withoutBlankRows(c: ReportContent): ReportContent {
     personalTodo: c.personalTodo.filter(filled),
     dailySchedules: c.dailySchedules.filter((s) => s.time !== "" || s.text !== ""),
     tasks: c.tasks.filter((t) => t.text !== "" || t.planned != null || t.worked != null),
+  };
+}
+
+/**
+ * Which reports an admin print covers (/admin/print and GET /api/reports/print share this, so both
+ * validate server-side): one report by id, or every report on a date, optionally narrowed to one
+ * department and/or one staff member. `empty` is the message to show when nothing matches.
+ */
+export function printSelection(
+  param: (key: string) => string | null | undefined,
+): { error: string } | { where: Prisma.DailyReportWhereInput; empty: string } {
+  const get = (key: string) => param(key)?.trim() ?? "";
+  if (get("id")) return { where: { id: get("id") }, empty: "Report not found." };
+  const date = get("date");
+  if (!date) return { error: "Please select a date." };
+  if (!isValidISODate(date)) return { error: "Please select a valid date." };
+  const dept = get("dept");
+  if (dept && !DEPARTMENTS.includes(dept as DepartmentValue)) return { error: "Invalid department." };
+  const staff = get("staff");
+  return {
+    where: {
+      reportDate: dateFromISO(date),
+      ...(staff ? { userId: staff } : {}),
+      ...(dept ? { user: { department: dept as DepartmentValue } } : {}),
+    },
+    empty: staff
+      ? "No report available for this employee on this date."
+      : dept
+        ? "No reports available for the selected filters."
+        : "No reports available for this date.",
   };
 }

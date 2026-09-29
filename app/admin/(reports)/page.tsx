@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { DeleteReportButton, ReportDeletion } from "@/components/admin/ReportDelete";
 import { ReportFilters, type Filters } from "@/components/admin/ReportFilters";
+import { PrintReports } from "@/components/admin/ReportPrint";
 import { btnSecondary, ReportStatusBadge } from "@/components/ui/ui";
 import type { Prisma } from "@/generated/prisma/client";
 import { requireAdmin } from "@/lib/auth";
@@ -123,7 +124,10 @@ export default async function ReportsPage({ searchParams }: PageProps<"/admin">)
       },
     }),
     // Staff filter options: STAFF users only (inactive ones too — their reports are still here).
-    prisma.user.findMany({ where: { role: "STAFF" }, select: { id: true, name: true, email: true, isActive: true } }),
+    prisma.user.findMany({
+      where: { role: "STAFF" },
+      select: { id: true, name: true, email: true, isActive: true, department: true },
+    }),
   ]);
   staff.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.email.localeCompare(b.email));
 
@@ -153,6 +157,8 @@ export default async function ReportsPage({ searchParams }: PageProps<"/admin">)
 
       {/* Keyed so "Clear filters" / back navigation resets the form state. */}
       <ReportFilters key={JSON.stringify(filters)} initial={filters} staff={staff} />
+
+      <PrintReports today={today} staff={staff} />
 
       {/*
         Keyed without the page so a success notice clears on a new search/filter but survives the page change below.
@@ -219,7 +225,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/admin">)
                     <td className="px-3 py-3 text-center tabular-nums">
                       {r.performanceIndex ? `${r.performanceIndex}/5` : <span className="text-neutral-400">—</span>}
                     </td>
-                    {/* Date and time on two lines (like Employee) so View + Delete fit without scrolling. */}
+                    {/* Date and time on two lines (like Employee) so View + Print + Delete fit without scrolling. */}
                     <td className="whitespace-pre px-3 py-3 text-xs text-neutral-500">
                       {formatDateTime(r.updatedAt, tz).replace(", ", "\n")}
                     </td>
@@ -227,6 +233,15 @@ export default async function ReportsPage({ searchParams }: PageProps<"/admin">)
                       <div className="flex justify-end gap-2">
                         <Link href={`/admin/reports/${r.id}`} className={`${btnSecondary} px-3 py-1.5 text-xs`}>
                           View
+                        </Link>
+                        {/* Opens the print page in a new tab: this report only, print dialog opens by itself. */}
+                        <Link
+                          href={`/admin/print?id=${r.id}`}
+                          target="_blank"
+                          prefetch={false}
+                          className={`${btnSecondary} px-3 py-1.5 text-xs`}
+                        >
+                          Print
                         </Link>
                         <DeleteReportButton
                           id={r.id}

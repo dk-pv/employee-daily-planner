@@ -32,6 +32,8 @@ const STAFF: { name: string; email: string; department: DepartmentValue }[] = [
   { name: "manu", email: "manuprasad9615@gmail.com", department: "MARKETING" },
   { name: "afnan", email: "mohammedafnan8089@gmail.com", department: "MARKETING" },
   { name: "lizan", email: "lizanm944@gmail.com", department: "SALES" },
+  { name: "Jaseem", email: "jaseemkoppilakath@gmail.com", department: "STUDENTS" },
+  { name: "Naima", email: "naimanurin7@gmail.com", department: "STUDENTS" },
 ];
 
 type Db = InstanceType<typeof PrismaClient>;

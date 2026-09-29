@@ -12,6 +12,7 @@ export const DEPARTMENT_LABELS: Record<DepartmentValue, string> = {
   MARKETING: "Marketing",
   HR: "HR",
   ACCOUNTS: "Accounts",
+  STUDENTS: "Students",
 };
 
 export function departmentLabel(d: string | null | undefined) {

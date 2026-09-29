@@ -65,7 +65,7 @@ re-seeding creates a *new* admin with that email — rename the existing one in 
 - Admins can permanently delete a single daily report (`DELETE /api/reports/:id`, confirmed by typing `DELETE`, which
   the server re-checks). The employee's account and other reports stay. Within the 7-day edit window the employee can
   start a new report for that date.
-- Departments: Sales, Development, Marketing, HR, Accounts — required for staff, always empty for admins. The list comes
+- Departments: Sales, Development, Marketing, HR, Accounts, Students — required for staff, always empty for admins. The list comes
   from the `Department` enum in `prisma/schema.prisma` (labels in `lib/utils.ts`); a new value needs a migration applied
   with `prisma migrate deploy` before anyone can select it.
 - Sessions are server-side (`Session` table). Logout ends the session; deactivation and password changes sign the

@@ -1,6 +1,6 @@
 // Shared helpers — safe for both server and client code.
 
-export const DEPARTMENTS = ["SALES", "DEVELOPMENT", "MARKETING", "HR", "ACCOUNTS"] as const;
+export const DEPARTMENTS = ["SALES", "DEVELOPMENT", "MARKETING", "HR", "ACCOUNTS", "STUDENTS"] as const;
 export type DepartmentValue = (typeof DEPARTMENTS)[number];
 
 export const DEPARTMENT_LABELS: Record<DepartmentValue, string> = {
@@ -9,6 +9,7 @@ export const DEPARTMENT_LABELS: Record<DepartmentValue, string> = {
   MARKETING: "Marketing",
   HR: "HR",
   ACCOUNTS: "Accounts",
+  STUDENTS: "Students",
 };
 
 export function departmentLabel(d: string | null | undefined) {

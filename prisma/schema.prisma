@@ -18,6 +18,7 @@ enum Department {
   MARKETING
   HR
   ACCOUNTS
+  STUDENTS
 }
 
 enum ReportStatus {

@@ -65,7 +65,7 @@ re-seeding creates a *new* admin with that email — rename the existing one in 
 - Admins can permanently delete a single daily report (`DELETE /api/reports/:id`, confirmed by typing `DELETE`, which
   the server re-checks). The employee's account and other reports stay. Within the 7-day edit window the employee can
   start a new report for that date.
-- Departments: Sales, Development, Marketing, HR, Accounts — required for staff, always empty for admins.
+- Departments: Sales, Development, Marketing, HR, Accounts, Students — required for staff, always empty for admins.
 - Sessions are server-side (`Session` table). Logout ends the session; deactivation and password changes sign the
   account out everywhere else. The session cookie is `Secure` in production, so serve the app over HTTPS.
 - Emails are unique and stored lower-case.

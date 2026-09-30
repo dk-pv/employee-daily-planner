@@ -9,7 +9,7 @@ const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"))
 const part =
   "min-w-0 cursor-pointer appearance-none bg-transparent px-1 py-[3px] text-center text-[13.5px] leading-5 tabular-nums text-neutral-900 " +
   "rounded hover:bg-neutral-100 focus:bg-neutral-100 focus:outline-none focus-visible:ring-1 focus-visible:ring-neutral-900 " +
-  "disabled:cursor-default disabled:hover:bg-transparent pointer-coarse:px-2";
+  "disabled:cursor-default disabled:hover:bg-transparent pointer-coarse:px-2 compact:py-1.5 compact:text-base compact:leading-6";
 
 /**
  * 12-hour time picker (Hour / Minute / AM-PM) built from native selects, so it works with the

@@ -3,6 +3,13 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Alert, btnDanger, btnSecondary, fieldInput, fieldLabel } from "./ui";
 
+/**
+ * Dialog footer: buttons on the right; on phones they grow to fill the row as comfortable touch targets.
+ * Sticky, so the actions stay in view when a tall form scrolls inside the dialog on a short screen.
+ */
+export const dialogFooter = "sticky bottom-0 flex justify-end gap-2 border-t border-neutral-200 bg-white px-5 py-3";
+export const dialogButton = "max-lg:min-h-10 max-sm:grow";
+
 /** Native <dialog> kept in sync with React state (focus trap, Esc and backdrop come for free). */
 export function Modal({
   open,
@@ -118,11 +125,11 @@ export function ConfirmDeleteDialog({
           />
         </div>
       </div>
-      <div className="flex justify-end gap-2 border-t border-neutral-200 px-5 py-3">
-        <button type="button" onClick={onCancel} disabled={pending} className={btnSecondary}>
+      <div className={dialogFooter}>
+        <button type="button" onClick={onCancel} disabled={pending} className={`${btnSecondary} ${dialogButton}`}>
           Cancel
         </button>
-        <button type="submit" disabled={!confirmed || pending} className={btnDanger}>
+        <button type="submit" disabled={!confirmed || pending} className={`${btnDanger} ${dialogButton}`}>
           {pending ? "Deleting…" : confirmLabel}
         </button>
       </div>

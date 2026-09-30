@@ -147,6 +147,28 @@ export default async function ReportsPage({ searchParams }: PageProps<"/admin">)
       ? formatDate(range.from)
       : `${range.from ? formatDate(range.from) : "…"} – ${range.to ? formatDate(range.to) : "…"}`;
   const tz = process.env.APP_TIMEZONE || "Asia/Kolkata";
+  const perfScore = (r: (typeof reports)[number]) =>
+    r.performanceIndex ? `${r.performanceIndex}/5` : <span className="text-neutral-400">—</span>;
+  // Shared by the table rows and the cards; `size` sets the button size (compact in the table, touch-sized on cards).
+  const actions = (r: (typeof reports)[number], size: string) => (
+    <>
+      <Link href={`/admin/reports/${r.id}`} className={`${btnSecondary} ${size}`}>
+        View
+      </Link>
+      {/* Opens the print page in a new tab: this report only, print dialog opens by itself. */}
+      <Link href={`/admin/print?id=${r.id}`} target="_blank" prefetch={false} className={`${btnSecondary} ${size}`}>
+        Print
+      </Link>
+      <DeleteReportButton
+        id={r.id}
+        employee={r.user.name}
+        email={r.user.email}
+        date={formatDate(isoFromDate(r.reportDate))}
+        className={size}
+      />
+    </>
+  );
+  const pageButton = `${btnSecondary} max-lg:min-h-10`;
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 px-4 py-6 sm:px-6">
@@ -193,90 +215,106 @@ export default async function ReportsPage({ searchParams }: PageProps<"/admin">)
             )}
           </div>
         ) : (
-          <div className="relative overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-            <table className="w-full min-w-[860px] text-left text-sm">
-              <thead className="border-b border-neutral-200 bg-neutral-50 text-xs font-medium uppercase tracking-wide text-neutral-500">
-                <tr>
-                  <th className="px-3 py-2.5">Employee</th>
-                  <th className="px-3 py-2.5">Department</th>
-                  <th className="px-3 py-2.5">Date</th>
-                  <th className="px-3 py-2.5">Status</th>
-                  <th className="px-3 py-2.5 text-right">Planned Hours</th>
-                  <th className="px-3 py-2.5 text-right">Worked Hours</th>
-                  <th className="px-3 py-2.5 text-center">Performance</th>
-                  <th className="px-3 py-2.5">Updated</th>
-                  <th className="px-3 py-2.5 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100">
-                {reports.map((r) => (
-                  <tr key={r.id} className="hover:bg-neutral-50">
-                    <td className="px-3 py-3">
+          <>
+            {/* Below lg: cards instead of a sideways-scrolling table. */}
+            <ul className="grid gap-3 md:grid-cols-2 lg:hidden">
+              {reports.map((r) => (
+                <li key={r.id} className="flex flex-col rounded-lg border border-neutral-200 bg-white p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
                       <p className="font-medium text-neutral-900">{r.user.name}</p>
-                      <p className="text-xs text-neutral-500">{r.user.email}</p>
-                    </td>
-                    <td className="px-3 py-3 text-neutral-700">{departmentLabel(r.user.department)}</td>
-                    <td className="whitespace-nowrap px-3 py-3 text-neutral-700">{formatDate(isoFromDate(r.reportDate))}</td>
-                    <td className="px-3 py-3">
+                      <p className="text-sm text-neutral-600 [overflow-wrap:anywhere]">{r.user.email}</p>
+                    </div>
+                    <div className="shrink-0">
                       <ReportStatusBadge status={r.status} />
-                    </td>
-                    <td className="px-3 py-3 text-right tabular-nums">{formatHours(r.totalPlannedHours.toNumber())}</td>
-                    <td className="px-3 py-3 text-right tabular-nums">{formatHours(r.totalWorkedHours.toNumber())}</td>
-                    <td className="px-3 py-3 text-center tabular-nums">
-                      {r.performanceIndex ? `${r.performanceIndex}/5` : <span className="text-neutral-400">—</span>}
-                    </td>
-                    {/* Date and time on two lines (like Employee) so View + Print + Delete fit without scrolling. */}
-                    <td className="whitespace-pre px-3 py-3 text-xs text-neutral-500">
-                      {formatDateTime(r.updatedAt, tz).replace(", ", "\n")}
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex justify-end gap-2">
-                        <Link href={`/admin/reports/${r.id}`} className={`${btnSecondary} px-3 py-1.5 text-xs`}>
-                          View
-                        </Link>
-                        {/* Opens the print page in a new tab: this report only, print dialog opens by itself. */}
-                        <Link
-                          href={`/admin/print?id=${r.id}`}
-                          target="_blank"
-                          prefetch={false}
-                          className={`${btnSecondary} px-3 py-1.5 text-xs`}
-                        >
-                          Print
-                        </Link>
-                        <DeleteReportButton
-                          id={r.id}
-                          employee={r.user.name}
-                          email={r.user.email}
-                          date={formatDate(isoFromDate(r.reportDate))}
-                        />
-                      </div>
-                    </td>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-sm text-neutral-700">
+                    {departmentLabel(r.user.department)} · {formatDate(isoFromDate(r.reportDate))}
+                  </p>
+                  <dl className="mt-3 grid grid-cols-3 gap-2 rounded-md bg-neutral-50 px-3 py-2 text-center">
+                    <div>
+                      <dt className="text-xs text-neutral-500">Planned</dt>
+                      <dd className="font-medium tabular-nums text-neutral-900">{formatHours(r.totalPlannedHours.toNumber())}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-neutral-500">Worked</dt>
+                      <dd className="font-medium tabular-nums text-neutral-900">{formatHours(r.totalWorkedHours.toNumber())}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-neutral-500">Performance</dt>
+                      <dd className="font-medium tabular-nums text-neutral-900">{perfScore(r)}</dd>
+                    </div>
+                  </dl>
+                  <p className="mt-2 text-xs text-neutral-500">Updated {formatDateTime(r.updatedAt, tz)}</p>
+                  <div className="mt-auto flex gap-2 pt-3">{actions(r, "min-h-10 flex-1 px-2")}</div>
+                </li>
+              ))}
+            </ul>
+            <div className="relative hidden overflow-x-auto rounded-lg border border-neutral-200 bg-white lg:block">
+              <table className="w-full min-w-[860px] text-left text-sm">
+                <thead className="border-b border-neutral-200 bg-neutral-50 text-xs font-medium uppercase tracking-wide text-neutral-500">
+                  <tr>
+                    <th className="px-3 py-2.5">Employee</th>
+                    <th className="px-3 py-2.5">Department</th>
+                    <th className="px-3 py-2.5">Date</th>
+                    <th className="px-3 py-2.5">Status</th>
+                    <th className="px-3 py-2.5 text-right">Planned Hours</th>
+                    <th className="px-3 py-2.5 text-right">Worked Hours</th>
+                    <th className="px-3 py-2.5 text-center">Performance</th>
+                    <th className="px-3 py-2.5">Updated</th>
+                    <th className="px-3 py-2.5 text-right">Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {reports.map((r) => (
+                    <tr key={r.id} className="hover:bg-neutral-50">
+                      <td className="px-3 py-3">
+                        <p className="font-medium text-neutral-900">{r.user.name}</p>
+                        <p className="text-xs text-neutral-500">{r.user.email}</p>
+                      </td>
+                      <td className="px-3 py-3 text-neutral-700">{departmentLabel(r.user.department)}</td>
+                      <td className="whitespace-nowrap px-3 py-3 text-neutral-700">{formatDate(isoFromDate(r.reportDate))}</td>
+                      <td className="px-3 py-3">
+                        <ReportStatusBadge status={r.status} />
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums">{formatHours(r.totalPlannedHours.toNumber())}</td>
+                      <td className="px-3 py-3 text-right tabular-nums">{formatHours(r.totalWorkedHours.toNumber())}</td>
+                      <td className="px-3 py-3 text-center tabular-nums">{perfScore(r)}</td>
+                      {/* Date and time on two lines (like Employee) so View + Print + Delete fit without scrolling. */}
+                      <td className="whitespace-pre px-3 py-3 text-xs text-neutral-500">
+                        {formatDateTime(r.updatedAt, tz).replace(", ", "\n")}
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex justify-end gap-2">{actions(r, "px-3 py-1.5 text-xs")}</div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
 
         {pages > 1 && (
-          <nav aria-label="Pagination" className="flex items-center justify-between text-sm">
+          <nav aria-label="Pagination" className="flex items-center justify-between gap-3 text-sm">
             <span className="text-neutral-500">
               Page {filters.page} of {pages}
             </span>
             <div className="flex gap-2">
               {filters.page > 1 ? (
-                <Link href={pageHref(filters.page - 1)} className={btnSecondary}>
+                <Link href={pageHref(filters.page - 1)} className={pageButton}>
                   Previous
                 </Link>
               ) : (
-                <span className={`${btnSecondary} pointer-events-none opacity-40`}>Previous</span>
+                <span className={`${pageButton} pointer-events-none opacity-40`}>Previous</span>
               )}
               {filters.page < pages ? (
-                <Link href={pageHref(filters.page + 1)} className={btnSecondary}>
+                <Link href={pageHref(filters.page + 1)} className={pageButton}>
                   Next
                 </Link>
               ) : (
-                <span className={`${btnSecondary} pointer-events-none opacity-40`}>Next</span>
+                <span className={`${pageButton} pointer-events-none opacity-40`}>Next</span>
               )}
             </div>
           </nav>

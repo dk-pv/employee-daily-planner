@@ -17,7 +17,7 @@ export function PrintNow() {
     };
   }, []);
   return (
-    <button type="button" onClick={() => window.print()} className={btnSecondary}>
+    <button type="button" onClick={() => window.print()} className={`${btnSecondary} max-lg:min-h-10`}>
       Print
     </button>
   );
@@ -121,11 +121,11 @@ export function PrintReports({
         <div className="flex items-end sm:col-span-3 lg:col-span-1">
           {canPrint ? (
             // A real link (new tab): a direct click is never popup-blocked, and the list keeps its state.
-            <a href={`/admin/print?${query}`} target="_blank" className={`${btnPrimary} w-full lg:w-auto`}>
+            <a href={`/admin/print?${query}`} target="_blank" className={`${btnPrimary} w-full max-lg:min-h-10 lg:w-auto`}>
               {current.count === 1 ? "Print Report" : "Print Reports"}
             </a>
           ) : (
-            <button type="button" disabled className={`${btnPrimary} w-full lg:w-auto`}>
+            <button type="button" disabled className={`${btnPrimary} w-full max-lg:min-h-10 lg:w-auto`}>
               Print Reports
             </button>
           )}

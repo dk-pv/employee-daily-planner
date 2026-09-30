@@ -42,7 +42,7 @@ export function LoginForm() {
             role="tab"
             aria-selected={portal === p}
             onClick={() => setPortal(p)}
-            className={`rounded-md py-1.5 text-sm font-medium transition-colors ${
+            className={`rounded-md py-1.5 text-sm font-medium transition-colors max-sm:py-2.5 ${
               portal === p ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-800"
             }`}
           >
@@ -74,7 +74,7 @@ export function LoginForm() {
         </label>
         <PasswordInput id="password" name="password" autoComplete="current-password" required />
       </div>
-      <button type="submit" disabled={pending} className={`${btnPrimary} w-full`}>
+      <button type="submit" disabled={pending} className={`${btnPrimary} w-full max-sm:min-h-11`}>
         {pending ? "Signing in…" : `Sign in to ${portal === "STAFF" ? "Daily Planner" : "Admin Panel"}`}
       </button>
     </form>

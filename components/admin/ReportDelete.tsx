@@ -69,10 +69,10 @@ export function ReportDeletion({ previousPageHref, children }: { previousPageHre
   );
 }
 
-export function DeleteReportButton(target: Target) {
+export function DeleteReportButton({ className = "px-3 py-1.5 text-xs", ...target }: Target & { className?: string }) {
   const open = use(OpenDelete);
   return (
-    <button type="button" onClick={() => open(target)} className={`${btnDangerSubtle} px-3 py-1.5 text-xs`}>
+    <button type="button" onClick={() => open(target)} className={`${btnDangerSubtle} ${className}`}>
       Delete
     </button>
   );

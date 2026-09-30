@@ -124,26 +124,6 @@ function rowsOverLimit(c: ReportContent | null) {
     .map((key) => `${SECTION_LABELS[key]} ${c[key].length}/${ROW_LIMITS[key]}`);
 }
 
-/**
- * Scale factor that fits the fixed A4 canvas (width from --a4-screen-width in globals.css) into the
- * available width, so small screens see the same page, smaller, instead of a reflowed layout.
- */
-function useCanvasZoom() {
-  const box = useRef<HTMLDivElement>(null);
-  const [zoom, setZoom] = useState<number | null>(null);
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const sheetWidth = parseFloat(getComputedStyle(el).getPropertyValue("--a4-screen-width")) || 900;
-    const update = () => setZoom(Math.min(1, el.clientWidth / sheetWidth));
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-  return { box, zoom };
-}
-
 type Notice = { tone: "success" | "error"; text: string } | null;
 
 type Props = {
@@ -169,7 +149,6 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
   const autosave = !readOnly && !submitted;
   // Follows the saved report, so the warning clears once a trimmed version has been saved.
   const overLimit = rowsOverLimit(report?.content ?? null);
-  const { box: canvas, zoom } = useCanvasZoom();
 
   const { control, register, getValues, setFocus, subscribe } = useForm<FormValues>({
     defaultValues: toFormValues(initialReport?.content ?? null),
@@ -325,39 +304,38 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
   const lists = { control, register, readOnly, onRowsChange: markChanged };
 
   return (
-    <div className={`mx-auto w-full max-w-[948px] px-4 pt-4 sm:px-6 print:max-w-none print:p-0 ${printOnly ? "pb-4" : "pb-28"}`}>
-      <div className={`mb-3 space-y-2 print:hidden ${printOnly ? "hidden" : ""}`}>
-        {isAdmin && <p className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">Staff report · read-only</p>}
-        {!isAdmin && lockReason && (
-          <Alert tone="warning">{report ? lockReason : `No report found for this date. ${lockReason}`}</Alert>
-        )}
-        {!isAdmin && !lockReason && !report && (
-          <Alert>New report — nothing has been saved for {formatDate(date)} yet. Rows are optional; fill in what applies.</Alert>
-        )}
-        {!readOnly && overLimit.length > 0 && (
-          <Alert tone="warning">
-            This report was started before the one-page limits and has more rows than the A4 planner allows ({overLimit.join(", ")}).
-            Nothing has been removed — delete the extra rows you no longer need, then it can be saved.
-          </Alert>
-        )}
-      </div>
+    <>
+      <div className={`mx-auto w-full max-w-[948px] px-4 pt-4 sm:px-6 print:max-w-none print:p-0 ${printOnly ? "pb-4" : "pb-6"}`}>
+        <div className={`mb-3 space-y-2 print:hidden ${printOnly ? "hidden" : ""}`}>
+          {isAdmin && <p className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">Staff report · read-only</p>}
+          {!isAdmin && lockReason && (
+            <Alert tone="warning">{report ? lockReason : `No report found for this date. ${lockReason}`}</Alert>
+          )}
+          {!isAdmin && !lockReason && !report && (
+            <Alert>New report — nothing has been saved for {formatDate(date)} yet. Rows are optional; fill in what applies.</Alert>
+          )}
+          {!readOnly && overLimit.length > 0 && (
+            <Alert tone="warning">
+              This report was started before the one-page limits and has more rows than the A4 planner allows ({overLimit.join(", ")}).
+              Nothing has been removed — delete the extra rows you no longer need, then it can be saved.
+            </Alert>
+          )}
+        </div>
 
-      {/* The A4 canvas: a fixed page (sizes in globals.css), scaled down on small screens, exactly one printed page. */}
-      <div ref={canvas} className="a4-canvas">
+        {/* The A4 sheet: a fixed page on desktop (sizes in globals.css) and exactly one printed page; below 1024px a one-column form, edge to edge on phones. */}
         <article
           aria-busy={navigating}
-          style={zoom == null ? undefined : ({ "--sheet-zoom": zoom } as CSSProperties)}
-          className={`a4-sheet mx-auto flex flex-col bg-white px-7 pb-7 pt-6 shadow-sm ring-1 ring-neutral-300 transition-opacity print:shadow-none print:ring-0 ${
+          className={`a4-sheet mx-auto flex flex-col bg-white px-7 pb-7 pt-6 shadow-sm ring-1 ring-neutral-300 transition-opacity print:shadow-none print:ring-0 phone:-mx-4 phone:px-3 phone:pb-4 phone:pt-5 ${
             navigating ? "opacity-50" : ""
           }`}
         >
           <header className="print:mb-0.5">
-            <h1 className="text-center text-[26px] font-extrabold tracking-[0.02em] text-neutral-900 print:text-[19px]">
+            <h1 className="text-center text-[26px] font-extrabold tracking-[0.02em] text-neutral-900 print:text-[19px] phone:text-[22px]">
               DAILY PLANNER
             </h1>
             <div className="mt-2 border-t-[1.5px] border-neutral-900 print:mt-1" />
             {/* Two rows — EMPLOYEE | JOB ROLE, then DEPARTMENT | DATE — with fixed label widths so the values line up. */}
-            <div className="mt-3 grid grid-cols-2 gap-x-8 gap-y-2.5 print:mt-2 print:gap-x-6 print:gap-y-1.5">
+            <div className="mt-3 grid grid-cols-2 gap-x-8 gap-y-2.5 print:mt-2 print:gap-x-6 print:gap-y-1.5 compact:gap-y-3 phone:grid-cols-1">
               <HeaderField label="EMPLOYEE" labelClass={HEADER_LABEL_LEFT}>
                 {employee.name}
               </HeaderField>
@@ -389,7 +367,7 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
                       value={dateInput}
                       onChange={(e) => void onDateChange(e.target.value)}
                       aria-label="Report date"
-                      className="w-full min-w-0 bg-transparent text-[13.5px] font-medium focus:outline-none print:hidden"
+                      className="w-full min-w-0 bg-transparent text-[13.5px] font-medium focus:outline-none print:hidden compact:text-base"
                     />
                     <span className="hidden print:inline">{formatDate(date)}</span>
                   </>
@@ -398,18 +376,20 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
             </div>
           </header>
 
-          {/* Column widths and section order follow the A4 reference: left 33.6%, gap 2.5%, right the rest. */}
-          <div className="mt-5 grid min-h-0 flex-1 grid-cols-[33.6%_minmax(0,1fr)] gap-x-[2.5%] print:mt-3">
-            <div className="flex min-w-0 flex-col gap-3 print:gap-1.5">
+          {/* Column widths and section order follow the A4 reference: left 33.6%, gap 2.5%, right the rest. Below 1024px: one column, left then right. */}
+          <div className="mt-5 grid min-h-0 flex-1 grid-cols-[33.6%_minmax(0,1fr)] gap-x-[2.5%] print:mt-3 compact:grid-cols-1 compact:gap-y-4">
+            <div className="flex min-w-0 flex-col gap-3 print:gap-1.5 compact:gap-4">
               <CheckList {...lists} name="topPriorities" title="TOP PRIORITIES" itemLabel="Priority" className="grow-[2]" />
               <CommunicationsTable {...lists} className="grow-[3]" />
               <CheckList {...lists} name="personalTodo" title="PERSONAL TO DO LIST" itemLabel="To-do" className="grow" />
               <ScheduleList {...lists} className="grow" />
               <Section title="HOW WILL YOU RATE YOUR DAY?" disabled={readOnly}>
-                <div className="space-y-1 print:space-y-1">
+                <div className="space-y-1 print:space-y-1 compact:space-y-2">
                   {(["productivity", "mood", "health"] as const).map((key) => (
-                    <div key={key} className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold uppercase tracking-[0.04em] print:text-[8px]">{key}</span>
+                    <div key={key} className="flex items-center justify-between gap-2 compact:justify-start phone:justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.04em] print:text-[8px] compact:w-32 compact:text-xs phone:w-auto">
+                        {key}
+                      </span>
                       <Controller
                         control={control}
                         name={key}
@@ -421,7 +401,7 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
               </Section>
             </div>
 
-            <div className="flex min-w-0 flex-col gap-3 print:gap-1.5">
+            <div className="flex min-w-0 flex-col gap-3 print:gap-1.5 compact:gap-4">
               <TaskTable {...lists} className="flex-1" />
               {/* Uses the room under the To Do rows; the To Do box gives up that space, not the page. */}
               <Section title="OFFICE HOURS TRACKER" disabled={readOnly} className="shrink-0">
@@ -429,8 +409,8 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
               </Section>
               {/* Manager Note + Performance Index: written by the admin (PATCH /api/reports/[id]), read-only for staff. */}
               <Section title="MANAGER NOTE" className="shrink-0">
-                <div className="flex items-center gap-3 py-1 print:py-0">
-                  <span className="text-[11px] font-bold uppercase tracking-[0.04em] print:text-[8.5px]">Performance index:</span>
+                <div className="flex items-center gap-3 py-1 print:py-0 compact:flex-wrap compact:gap-y-1.5">
+                  <span className="text-[11px] font-bold uppercase tracking-[0.04em] print:text-[8.5px] compact:text-xs">Performance index:</span>
                   <Scale
                     label="Performance index"
                     value={performance}
@@ -466,11 +446,12 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
         </article>
       </div>
 
+      {/* Sticky, not fixed: it rides the bottom of the screen while scrolling and never covers the end of the form. */}
       {!printOnly && (
-        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-neutral-200 bg-white/95 backdrop-blur print:hidden">
-          <div className="mx-auto flex max-w-[948px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2.5 sm:px-6">
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              {/* Messages live in the fixed bar so they are seen wherever the user has scrolled. */}
+        <div className="sticky bottom-0 z-10 border-t border-neutral-200 bg-white/95 backdrop-blur print:hidden">
+          <div className="mx-auto flex max-w-[948px] flex-wrap items-center justify-between gap-x-4 gap-y-2 px-3 py-2.5 sm:px-6 phone:py-2">
+            <div className="flex min-w-0 flex-1 flex-col gap-1 phone:basis-full">
+              {/* Messages live in the sticky bar so they are seen wherever the user has scrolled. */}
               {notice && (
                 <p
                   role={notice.tone === "error" ? "alert" : "status"}
@@ -495,22 +476,37 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
                 {navigating && <span>Loading…</span>}
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => window.print()} className={btnSecondary}>
+            <div className="flex flex-wrap gap-2 phone:w-full">
+              <button type="button" onClick={() => window.print()} className={`${btnSecondary} ${barButton}`}>
                 Print
               </button>
               {!readOnly && !submitted && (
-                <button type="button" onClick={() => void save("draft", true)} disabled={saveState === "saving"} className={btnSecondary}>
+                <button
+                  type="button"
+                  onClick={() => void save("draft", true)}
+                  disabled={saveState === "saving"}
+                  className={`${btnSecondary} ${barButton}`}
+                >
                   Save Draft
                 </button>
               )}
               {!readOnly && (
-                <button type="button" onClick={() => void onSubmit()} disabled={saveState === "saving"} className={btnPrimary}>
+                <button
+                  type="button"
+                  onClick={() => void onSubmit()}
+                  disabled={saveState === "saving"}
+                  className={`${btnPrimary} ${barButton} phone:grow`}
+                >
                   {submitted ? "UPDATE DAILY REPORT" : "SUBMIT DAILY REPORT"}
                 </button>
               )}
               {isAdmin && report && (
-                <button type="button" onClick={() => void saveReview()} disabled={!reviewDirty || reviewSaving} className={btnPrimary}>
+                <button
+                  type="button"
+                  onClick={() => void saveReview()}
+                  disabled={!reviewDirty || reviewSaving}
+                  className={`${btnPrimary} ${barButton} phone:grow`}
+                >
                   {reviewSaving ? "Saving…" : "Save Review"}
                 </button>
               )}
@@ -518,20 +514,23 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
+// Action bar buttons: 40px touch targets below 1024px; on phones the primary action takes the rest of the row.
+const barButton = "compact:min-h-10 phone:px-3";
+
 // Six ruled "paper" lines for the manager's note; bg-local keeps them under the text when it scrolls.
 const ruled =
-  "h-36 bg-local bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_23px,#a3a3a3_23px,#a3a3a3_24px)] text-[13px] leading-6";
+  "h-36 bg-local bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_23px,#a3a3a3_23px,#a3a3a3_24px)] text-[13px] leading-6 compact:text-base";
 // Printed: the same six lines at a tighter pitch, growing to at most 16 (the .print-text cap) for a long note.
 const ruledPrint =
   "print:h-auto print:min-h-24 print:bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_15px,#a3a3a3_15px,#a3a3a3_16px)] print:text-[9.5px] print:leading-4";
 
-// Header label columns: wide enough for "DEPARTMENT:" (left) and "JOB ROLE*:" (right).
-const HEADER_LABEL_LEFT = "w-[5.2rem] print:w-[4.2rem]";
-const HEADER_LABEL_RIGHT = "w-[4.4rem] print:w-[3.6rem]";
+// Header label columns: wide enough for "DEPARTMENT:" (left) and "JOB ROLE*:" (right); one shared width on phones (one field per row).
+const HEADER_LABEL_LEFT = "w-[5.2rem] print:w-[4.2rem] compact:w-24";
+const HEADER_LABEL_RIGHT = "w-[4.4rem] print:w-[3.6rem] compact:w-[5.25rem] phone:w-24";
 
 function HeaderField({
   label,
@@ -548,10 +547,10 @@ function HeaderField({
 }) {
   const Label = htmlFor ? "label" : "span";
   return (
-    <div className="flex min-w-0 items-end gap-2">
+    <div className="flex min-w-0 items-end gap-2 compact:items-baseline">
       <Label
         htmlFor={htmlFor}
-        className={`shrink-0 pb-1 text-[10px] font-bold uppercase tracking-[0.04em] text-neutral-900 print:text-[8px] ${labelClass}`}
+        className={`shrink-0 pb-1 text-[10px] font-bold uppercase tracking-[0.04em] text-neutral-900 print:text-[8px] compact:text-xs ${labelClass}`}
       >
         {label}
         {required && (
@@ -561,7 +560,7 @@ function HeaderField({
         )}
         :
       </Label>
-      <span className="min-w-0 flex-1 truncate border-b border-neutral-900 pb-1 text-[13.5px] font-medium text-neutral-900 print:text-[10.5px]">
+      <span className="min-w-0 flex-1 truncate border-b border-neutral-900 pb-1 text-[13.5px] font-medium text-neutral-900 print:text-[10.5px] compact:text-base compact:leading-7">
         {children}
       </span>
     </div>

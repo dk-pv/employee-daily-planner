@@ -9,8 +9,9 @@ export const btnSecondary = `${btn} border border-neutral-300 bg-white text-neut
 export const btnDangerSubtle = `${btn} border border-red-200 bg-white text-red-700 hover:border-red-300 hover:bg-red-50`;
 export const btnDanger = `${btn} bg-red-700 text-white hover:bg-red-800`;
 
+// 16px on phones: iOS Safari zooms the whole page when a smaller input gets focus.
 export const fieldInput =
-  "w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 " +
+  "w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-base text-neutral-900 placeholder:text-neutral-400 sm:text-sm " +
   "focus:border-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900 disabled:bg-neutral-100 disabled:text-neutral-500";
 export const fieldLabel = "mb-1 block text-xs font-medium text-neutral-700";
 

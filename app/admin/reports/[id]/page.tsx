@@ -21,7 +21,7 @@ export default async function ReportReviewPage({ params }: PageProps<"/admin/rep
   return (
     <>
       <div className="mx-auto flex max-w-[948px] flex-wrap items-center justify-between gap-2 px-4 pt-5 sm:px-6 print:hidden">
-        <Link href="/admin" className="text-sm font-medium text-neutral-600 hover:text-neutral-900">
+        <Link href="/admin" className="text-sm font-medium text-neutral-600 hover:text-neutral-900 compact:inline-flex compact:min-h-10 compact:items-center">
           ← Back to reports
         </Link>
         <p className="text-sm text-neutral-500">

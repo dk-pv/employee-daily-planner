@@ -10,7 +10,7 @@ export default function ErrorPage({ reset }: { error: Error & { digest?: string 
         <p className="mt-2 text-sm text-neutral-600">
           The page could not be loaded. Please try again — if the problem continues, contact your administrator.
         </p>
-        <button type="button" onClick={reset} className={`${btnPrimary} mt-6`}>
+        <button type="button" onClick={reset} className={`${btnPrimary} mt-6 max-sm:min-h-11`}>
           Try again
         </button>
       </div>

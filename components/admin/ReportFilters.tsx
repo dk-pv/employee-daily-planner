@@ -130,7 +130,8 @@ export function ReportFilters({ initial, staff }: { initial: Filters; staff: Sta
       </div>
 
       <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap gap-3">
+        {/* Phones: date fields stack full width. empty:hidden drops the wrapper (and its row gap) when no date is needed. */}
+        <div className="grid gap-3 empty:hidden max-sm:w-full sm:flex sm:flex-wrap">
           {f.period === "date" && (
             <div>
               <label htmlFor="f-date" className={fieldLabel}>
@@ -156,11 +157,11 @@ export function ReportFilters({ initial, staff }: { initial: Filters; staff: Sta
             </>
           )}
         </div>
-        <div className="flex gap-2">
-          <button type="button" onClick={reset} className={btnSecondary} disabled={pending}>
+        <div className="grid grid-cols-2 gap-2 max-sm:w-full sm:flex">
+          <button type="button" onClick={reset} className={`${btnSecondary} max-lg:min-h-10`} disabled={pending}>
             Reset
           </button>
-          <button type="submit" className={btnPrimary} disabled={pending}>
+          <button type="submit" className={`${btnPrimary} max-lg:min-h-10`} disabled={pending}>
             {pending ? "Filtering…" : "Apply filters"}
           </button>
         </div>

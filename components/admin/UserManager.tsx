@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
-import { ConfirmDeleteDialog, Modal } from "@/components/ui/Modal";
+import { ConfirmDeleteDialog, dialogButton, dialogFooter, Modal } from "@/components/ui/Modal";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import { Alert, Badge, btnDangerSubtle, btnPrimary, btnSecondary, fieldInput, fieldLabel } from "@/components/ui/ui";
 import { DEPARTMENT_LABELS, DEPARTMENTS, departmentLabel, formatDateTime, type DepartmentValue } from "@/lib/utils";
@@ -66,6 +66,49 @@ export function UserManager({ users, currentUserId, timeZone }: { users: UserRow
         [u.name, u.email, departmentLabel(u.role === "ADMIN" ? null : u.department)].some((v) => v.toLowerCase().includes(q)),
     );
 
+  const roleBadge = (u: UserRow) => <Badge tone={u.role === "ADMIN" ? "dark" : "neutral"}>{u.role}</Badge>;
+  const statusBadge = (u: UserRow) => (u.isActive ? <Badge tone="green">Active</Badge> : <Badge tone="red">Inactive</Badge>);
+  // Shared by the table rows and the cards; cards get full-size touch targets.
+  const actions = (u: UserRow, card: boolean) => {
+    const isSelf = u.id === currentUserId;
+    const size = card ? "min-h-10 flex-1 px-2" : "px-3 py-1.5 text-xs";
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => {
+            setNotice(null);
+            setEditing(u);
+          }}
+          className={`${btnSecondary} ${size}`}
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          onClick={() => void toggleActive(u)}
+          disabled={isSelf || busyId === u.id}
+          title={isSelf ? "You cannot deactivate your own account" : undefined}
+          className={`${btnSecondary} ${size} ${card ? "" : "w-[5.75rem]"}`}
+        >
+          {busyId === u.id ? "Saving…" : u.isActive ? "Deactivate" : "Activate"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setNotice(null);
+            setDeleting(u);
+          }}
+          disabled={isSelf}
+          title={isSelf ? "You cannot delete your own account" : undefined}
+          className={`${btnDangerSubtle} ${size}`}
+        >
+          Delete
+        </button>
+      </>
+    );
+  };
+
   return (
     <>
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -79,7 +122,7 @@ export function UserManager({ users, currentUserId, timeZone }: { users: UserRow
             setNotice(null);
             setEditing("new");
           }}
-          className={btnPrimary}
+          className={`${btnPrimary} max-lg:min-h-10 max-sm:w-full`}
         >
           + Create User
         </button>
@@ -106,78 +149,72 @@ export function UserManager({ users, currentUserId, timeZone }: { users: UserRow
           {users.length === 0 ? "No users yet." : "No users match your search."}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <table className="w-full min-w-[900px] text-left text-sm">
-            <thead className="border-b border-neutral-200 bg-neutral-50 text-xs font-medium uppercase tracking-wide text-neutral-500">
-              <tr>
-                <th className="px-4 py-2.5">Name</th>
-                <th className="px-4 py-2.5">Email</th>
-                <th className="px-4 py-2.5">Role</th>
-                <th className="px-4 py-2.5">Department</th>
-                <th className="px-4 py-2.5">Status</th>
-                <th className="px-4 py-2.5">Created</th>
-                <th className="px-4 py-2.5 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {shown.map((u) => {
-                const isSelf = u.id === currentUserId;
-                return (
+        <>
+          {/* Below lg: cards instead of a sideways-scrolling table. */}
+          <ul className="grid gap-3 md:grid-cols-2 lg:hidden">
+            {shown.map((u) => (
+              <li key={u.id} className="flex flex-col rounded-lg border border-neutral-200 bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium text-neutral-900">
+                      {u.name}
+                      {u.id === currentUserId && <span className="ml-1.5 text-xs font-normal text-neutral-400">(you)</span>}
+                    </p>
+                    <p className="text-sm text-neutral-600 [overflow-wrap:anywhere]">{u.email}</p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1.5">
+                    {roleBadge(u)}
+                    {statusBadge(u)}
+                  </div>
+                </div>
+                <dl className="mt-3 flex flex-wrap gap-x-8 gap-y-2 text-sm">
+                  <div>
+                    <dt className="text-xs text-neutral-500">Department</dt>
+                    <dd className="text-neutral-800">{departmentLabel(u.role === "ADMIN" ? null : u.department)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-neutral-500">Created</dt>
+                    <dd className="text-neutral-800">{formatDateTime(u.createdAt, timeZone)}</dd>
+                  </div>
+                </dl>
+                <div className="mt-auto flex gap-2 pt-4">{actions(u, true)}</div>
+              </li>
+            ))}
+          </ul>
+          <div className="hidden overflow-x-auto rounded-lg border border-neutral-200 bg-white lg:block">
+            <table className="w-full min-w-[900px] text-left text-sm">
+              <thead className="border-b border-neutral-200 bg-neutral-50 text-xs font-medium uppercase tracking-wide text-neutral-500">
+                <tr>
+                  <th className="px-4 py-2.5">Name</th>
+                  <th className="px-4 py-2.5">Email</th>
+                  <th className="px-4 py-2.5">Role</th>
+                  <th className="px-4 py-2.5">Department</th>
+                  <th className="px-4 py-2.5">Status</th>
+                  <th className="px-4 py-2.5">Created</th>
+                  <th className="px-4 py-2.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100">
+                {shown.map((u) => (
                   <tr key={u.id} className="hover:bg-neutral-50">
                     <td className="px-4 py-3 font-medium text-neutral-900">
                       {u.name}
-                      {isSelf && <span className="ml-1.5 text-xs font-normal text-neutral-400">(you)</span>}
+                      {u.id === currentUserId && <span className="ml-1.5 text-xs font-normal text-neutral-400">(you)</span>}
                     </td>
                     <td className="px-4 py-3 text-neutral-700">{u.email}</td>
-                    <td className="px-4 py-3">
-                      <Badge tone={u.role === "ADMIN" ? "dark" : "neutral"}>{u.role}</Badge>
-                    </td>
+                    <td className="px-4 py-3">{roleBadge(u)}</td>
                     <td className="px-4 py-3 text-neutral-700">{departmentLabel(u.role === "ADMIN" ? null : u.department)}</td>
-                    <td className="px-4 py-3">
-                      {u.isActive ? <Badge tone="green">Active</Badge> : <Badge tone="red">Inactive</Badge>}
-                    </td>
+                    <td className="px-4 py-3">{statusBadge(u)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-neutral-500">{formatDateTime(u.createdAt, timeZone)}</td>
                     <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setNotice(null);
-                            setEditing(u);
-                          }}
-                          className={`${btnSecondary} px-3 py-1.5 text-xs`}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void toggleActive(u)}
-                          disabled={isSelf || busyId === u.id}
-                          title={isSelf ? "You cannot deactivate your own account" : undefined}
-                          className={`${btnSecondary} w-[5.75rem] px-3 py-1.5 text-xs`}
-                        >
-                          {busyId === u.id ? "Saving…" : u.isActive ? "Deactivate" : "Activate"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setNotice(null);
-                            setDeleting(u);
-                          }}
-                          disabled={isSelf}
-                          title={isSelf ? "You cannot delete your own account" : undefined}
-                          className={`${btnDangerSubtle} px-3 py-1.5 text-xs`}
-                        >
-                          Delete
-                        </button>
-                      </div>
+                      <div className="flex justify-end gap-2">{actions(u, false)}</div>
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       <Modal open={editing !== null} onClose={() => setEditing(null)} labelledBy="user-dialog-title">
@@ -338,7 +375,7 @@ function UserForm({
           />
           {err("password")}
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label htmlFor="u-role" className={fieldLabel}>
               Role
@@ -384,17 +421,18 @@ function UserForm({
             </div>
           )}
         </div>
-        <label className="flex items-center gap-2 text-sm text-neutral-800">
-          <input type="checkbox" {...register("isActive")} disabled={isSelf} className="size-4 accent-neutral-900" />
+        {/* The whole label is the tap target on touch screens. */}
+        <label className="flex items-center gap-2 text-sm text-neutral-800 max-lg:min-h-10">
+          <input type="checkbox" {...register("isActive")} disabled={isSelf} className="size-4 accent-neutral-900 max-lg:size-5" />
           Active — can sign in
         </label>
         {isSelf && <p className="text-xs text-neutral-500">You cannot change your own role or deactivate your own account.</p>}
       </div>
-      <div className="flex justify-end gap-2 border-t border-neutral-200 px-5 py-3">
-        <button type="button" onClick={onCancel} className={btnSecondary}>
+      <div className={dialogFooter}>
+        <button type="button" onClick={onCancel} className={`${btnSecondary} ${dialogButton}`}>
           Cancel
         </button>
-        <button type="submit" disabled={isSubmitting} className={btnPrimary}>
+        <button type="submit" disabled={isSubmitting} className={`${btnPrimary} ${dialogButton}`}>
           {isSubmitting ? "Saving…" : user ? "Save changes" : "Create user"}
         </button>
       </div>

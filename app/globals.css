@@ -5,6 +5,17 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/*
+ * Screen-only breakpoints for the reflowed layout. Print never matches `screen`, so the printed A4
+ * page keeps exactly its desktop + print: classes whatever the window size.
+ *   compact: below 1024px (tablets, phones): the planner becomes a one-column form.
+ *   phone:   below 640px: phone refinements; emitted after compact:, so it wins.
+ * Both are emitted after sm:/md:/lg:/pointer-*:, so never pair them with those on the same property
+ * of one element (use compact:sm: for tablet-only values).
+ */
+@custom-variant compact (@media screen and (width < 64rem));
+@custom-variant phone (@media screen and (width < 40rem));
+
 :root {
   color-scheme: light;
 }
@@ -55,47 +66,28 @@ input[type="number"] {
 }
 
 /*
- * A4 planner canvas — all page sizes live here.
- * Screen: a fixed sheet in A4 proportions (210 × 297), scaled down on narrow screens (PlannerForm
- * sets --sheet-zoom from the real width; the steps below are only the first-paint approximation).
+ * A4 planner sheet — all page sizes live here.
+ * Screen >= 1024px: a fixed sheet in A4 proportions (210 × 297).
+ * Screen < 1024px: a fluid one-column form (the compact: / phone: classes in the planner components).
  * Print: the real A4 page, margin 0 with the sheet's own 8mm padding (so no browser header/footer).
  */
-:root {
-  --a4-screen-width: 900px;
-  --a4-screen-height: 1273px;
-}
-.a4-canvas {
-  --sheet-zoom: 1;
-}
-@media (max-width: 947px) {
-  .a4-canvas {
-    --sheet-zoom: 0.85;
-  }
-}
-@media (max-width: 820px) {
-  .a4-canvas {
-    --sheet-zoom: 0.7;
-  }
-}
-@media (max-width: 680px) {
-  .a4-canvas {
-    --sheet-zoom: 0.54;
-  }
-}
-@media (max-width: 540px) {
-  .a4-canvas {
-    --sheet-zoom: 0.43;
-  }
-}
-@media (max-width: 420px) {
-  .a4-canvas {
-    --sheet-zoom: 0.32;
-  }
-}
 .a4-sheet {
-  width: var(--a4-screen-width);
-  min-height: var(--a4-screen-height);
-  zoom: var(--sheet-zoom);
+  width: 900px;
+  min-height: 1273px;
+}
+/* These rules are unlayered, so they beat any utility: small screens override them here, not with classes. */
+@media screen and (width < 64rem) {
+  .a4-sheet {
+    width: auto;
+    min-height: 0;
+  }
+  /* 24px: the minimum touch target. */
+  .paper-check {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    background-size: 16px;
+  }
 }
 
 @page {

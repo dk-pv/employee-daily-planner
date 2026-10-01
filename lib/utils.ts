@@ -19,6 +19,8 @@ export function departmentLabel(d: string | null | undefined) {
   return d ? (DEPARTMENT_LABELS[d as DepartmentValue] ?? d) : "—";
 }
 
+// Drafts (and new reports) can be edited until this many days after the report date.
+// A submitted report has its own window instead: 48 hours from submission (lib/reports.ts).
 export const EDIT_WINDOW_DAYS = 7;
 
 // ---------------------------------------------------------------------------
@@ -51,10 +53,10 @@ export function addDaysISO(value: string, days: number) {
   return isoFromDate(d);
 }
 
-/** Today's calendar date in the business timezone (APP_TIMEZONE on the server). */
-export function todayISO(timeZone = process.env.APP_TIMEZONE || "Asia/Kolkata") {
+/** Today's (or `now`'s) calendar date in the business timezone (APP_TIMEZONE on the server). */
+export function todayISO(now = new Date(), timeZone = process.env.APP_TIMEZONE || "Asia/Kolkata") {
   // en-CA formats as YYYY-MM-DD.
-  return new Intl.DateTimeFormat("en-CA", { timeZone }).format(new Date());
+  return new Intl.DateTimeFormat("en-CA", { timeZone }).format(now);
 }
 
 /** Monday–Sunday week containing the given date. */

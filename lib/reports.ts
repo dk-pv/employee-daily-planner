@@ -18,6 +18,7 @@ export type PlannerReport = {
   status: "DRAFT" | "SUBMITTED";
   submittedAt: string | null;
   updatedAt: string;
+  /** DRAFT: last day it can be edited ("YYYY-MM-DD"). SUBMITTED: the exact moment editing ends (ISO timestamp, submittedAt + 48 h). */
   editableUntil: string;
   content: ReportContent;
   netOfficeHours: number | null;
@@ -37,7 +38,10 @@ export function serializeReport(r: DailyReport): PlannerReport {
     status: r.status,
     submittedAt: r.submittedAt?.toISOString() ?? null,
     updatedAt: r.updatedAt.toISOString(),
-    editableUntil: isoFromDate(r.editableUntil),
+    editableUntil:
+      r.status === "SUBMITTED" && r.submittedAt
+        ? submittedEditDeadline(r.submittedAt).toISOString()
+        : isoFromDate(r.editableUntil),
     // JSON columns are only ever written through reportContentSchema.
     content: {
       jobRole: r.jobRole ?? "",
@@ -71,13 +75,33 @@ export function serializeReport(r: DailyReport): PlannerReport {
 
 export const FUTURE_LIMIT_DAYS = 7;
 
+/** A submitted report stays editable for exactly this long after it was first submitted. */
+export const SUBMITTED_EDIT_HOURS = 48;
+export const EDIT_EXPIRED_MESSAGE = "Your 48-hour editing period has expired. This report is now read-only.";
+
+/** The moment a submitted report becomes read-only: submittedAt + 48 h — never derived from the report date. */
+export function submittedEditDeadline(submittedAt: Date) {
+  return new Date(submittedAt.getTime() + SUBMITTED_EDIT_HOURS * 60 * 60 * 1000);
+}
+
 /**
- * Why a staff member may not create/edit the report for `reportDate`, or null if they may.
- * `editableUntil` is the stored value for an existing report (reportDate + 7 days on creation).
+ * Why a staff member may not create/edit the report for `reportDate`, or null if they may. The planner page and
+ * POST /api/reports both call this with the server clock; admin review and delete never do.
+ * - SUBMITTED: editable while now < submittedAt + 48 h. Saving never moves submittedAt, so edits never extend it.
+ * - DRAFT or no report yet: until `editableUntil` (stored as reportDate + 7 days) and at most 7 days ahead.
  */
-export function editLockReason(reportDate: string, editableUntil: string | null, today = todayISO()) {
-  const until = editableUntil ?? addDaysISO(reportDate, EDIT_WINDOW_DAYS);
-  if (today > until) return "Your editing period has ended. Reports can only be edited for 7 days after the report date.";
+export function editLockReason(
+  reportDate: string,
+  report: Pick<DailyReport, "status" | "submittedAt" | "editableUntil"> | null,
+  now = new Date(),
+) {
+  if (report?.status === "SUBMITTED") {
+    // No submission time means the window cannot be known, so it stays read-only (the save route writes both together).
+    return report.submittedAt && now < submittedEditDeadline(report.submittedAt) ? null : EDIT_EXPIRED_MESSAGE;
+  }
+  const today = todayISO(now);
+  const until = report ? isoFromDate(report.editableUntil) : addDaysISO(reportDate, EDIT_WINDOW_DAYS);
+  if (today > until) return "Your editing period has ended. Unsubmitted reports can only be edited for 7 days after the report date.";
   if (reportDate > addDaysISO(today, FUTURE_LIMIT_DAYS)) return "Reports can only be planned up to 7 days ahead.";
   return null;
 }

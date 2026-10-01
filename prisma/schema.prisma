@@ -86,7 +86,9 @@ model DailyReport {
   performanceIndex  Int?
   reviewedAt        DateTime?
   status            ReportStatus @default(DRAFT)
+  // Set once, on first submission; never changed afterwards. Staff can edit a SUBMITTED report until submittedAt + 48 h.
   submittedAt       DateTime?
+  // Draft window: reportDate + 7 days. Not used for SUBMITTED reports (see submittedAt).
   editableUntil     DateTime     @db.Date
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt

@@ -134,10 +134,12 @@ type Props = {
   report: PlannerReport | null;
   /** Staff only: why the report cannot be edited (edit window over / too far ahead). */
   lockReason: string | null;
+  /** Staff only: dates of the employee's other unsubmitted drafts that can still be edited, newest first. */
+  drafts?: string[];
   timeZone: string;
 };
 
-export function PlannerForm({ mode, employee, date, report: initialReport, lockReason, timeZone }: Props) {
+export function PlannerForm({ mode, employee, date, report: initialReport, lockReason, drafts = [], timeZone }: Props) {
   const router = useRouter();
   const [navigating, startNavigation] = useTransition();
   const [report, setReport] = useState(initialReport);
@@ -314,6 +316,27 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
           {!isAdmin && !lockReason && !report && (
             <Alert>New report — nothing has been saved for {formatDate(date)} yet. Rows are optional; fill in what applies.</Alert>
           )}
+          {!isAdmin && drafts.length > 0 && (
+            <Alert tone="warning">
+              <p className="font-medium">Unsubmitted drafts</p>
+              <ul className="mt-1 space-y-0.5">
+                {drafts.map((d) => (
+                  <li key={d} className="flex flex-wrap items-center gap-x-3">
+                    <span>{formatDate(d)} — Draft</span>
+                    {/* Same path as the date picker: unsaved work is saved (or confirmed) before switching. */}
+                    <button
+                      type="button"
+                      onClick={() => void onDateChange(d)}
+                      disabled={navigating}
+                      className="font-medium underline underline-offset-2 hover:no-underline disabled:opacity-50 compact:min-h-10"
+                    >
+                      Open Draft
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </Alert>
+          )}
           {!readOnly && overLimit.length > 0 && (
             <Alert tone="warning">
               This report was started before the one-page limits and has more rows than the A4 planner allows ({overLimit.join(", ")}).
@@ -463,7 +486,12 @@ export function PlannerForm({ mode, employee, date, report: initialReport, lockR
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-600" aria-live="polite">
                 <ReportStatusBadge status={report?.status ?? null} />
                 {report && <span>Last updated: {formatDateTime(report.updatedAt, timeZone)}</span>}
-                {!isAdmin && report && !lockReason && <span>Editable until {formatDate(report.editableUntil)}</span>}
+                {!isAdmin && report && !lockReason && (
+                  <span>
+                    Editable until{" "}
+                    {submitted ? formatDateTime(report.editableUntil, timeZone) : formatDate(report.editableUntil)}
+                  </span>
+                )}
                 {isAdmin && (
                   <span>
                     {report?.review?.reviewedAt ? `Reviewed: ${formatDateTime(report.review.reviewedAt, timeZone)}` : "Not reviewed yet"}

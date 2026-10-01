@@ -8,14 +8,26 @@ import { dateFromISO, departmentLabel, isoFromDate, isValidISODate, todayISO } f
 export default async function PlannerPage({ searchParams }: PageProps<"/">) {
   const user = await requireStaff();
   const { date: requested } = await searchParams;
-  const today = todayISO();
+  const now = new Date();
+  const today = todayISO(now);
   const date = typeof requested === "string" && isValidISODate(requested) ? requested : today;
 
   // The report is looked up by the session user + date — never by an id from the browser.
-  const report = await prisma.dailyReport.findUnique({
-    where: { userId_reportDate: { userId: user.id, reportDate: dateFromISO(date) } },
-  });
-  const lockReason = editLockReason(date, report ? isoFromDate(report.editableUntil) : null, today);
+  const [report, drafts] = await Promise.all([
+    prisma.dailyReport.findUnique({
+      where: { userId_reportDate: { userId: user.id, reportDate: dateFromISO(date) } },
+    }),
+    // Unsubmitted drafts from other days stay under their own date; the planner links to the ones still editable.
+    prisma.dailyReport.findMany({
+      where: { userId: user.id, status: "DRAFT", reportDate: { lte: dateFromISO(today), not: dateFromISO(date) } },
+      select: { reportDate: true, status: true, submittedAt: true, editableUntil: true },
+      orderBy: { reportDate: "desc" },
+    }),
+  ]);
+  const lockReason = editLockReason(date, report, now);
+  const openDrafts = drafts
+    .filter((d) => !editLockReason(isoFromDate(d.reportDate), d, now))
+    .map((d) => isoFromDate(d.reportDate));
 
   return (
     <>
@@ -39,6 +51,7 @@ export default async function PlannerPage({ searchParams }: PageProps<"/">) {
           date={date}
           report={report ? serializeReport(report) : null}
           lockReason={lockReason}
+          drafts={openDrafts}
           timeZone={process.env.APP_TIMEZONE || "Asia/Kolkata"}
         />
       </main>

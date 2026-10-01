@@ -8,7 +8,6 @@ import {
   calcOfficeTime,
   dateFromISO,
   EDIT_WINDOW_DAYS,
-  isoFromDate,
   round2,
   sumHours,
   totalBreakMinutes,
@@ -32,11 +31,13 @@ export async function POST(request: Request) {
   const reportDate = dateFromISO(date);
   const key = { userId_reportDate: { userId, reportDate } };
 
+  const now = new Date();
   const existing = await prisma.dailyReport.findUnique({
     where: key,
-    select: { editableUntil: true, status: true },
+    select: { status: true, submittedAt: true, editableUntil: true },
   });
-  const lock = editLockReason(date, existing ? isoFromDate(existing.editableUntil) : null);
+  // Server clock only: a submitted report is read-only from submittedAt + 48 h, whatever the browser sends.
+  const lock = editLockReason(date, existing, now);
   if (lock) return jsonError(lock, 403);
 
   const breaks = totalBreakMinutes(content.breakMinutes, content.break2Minutes, content.break3Minutes);
@@ -49,7 +50,6 @@ export async function POST(request: Request) {
     totalWorkedHours: sumHours(content.tasks.map((t) => t.worked)),
   };
   const submitting = action === "submit";
-  const now = new Date();
 
   const upsert = () =>
     prisma.dailyReport.upsert({
@@ -58,12 +58,14 @@ export async function POST(request: Request) {
         ...data,
         userId,
         reportDate,
+        // The draft window only; once submitted, the 48-hour window from submittedAt applies instead.
         editableUntil: dateFromISO(addDaysISO(date, EDIT_WINDOW_DAYS)),
         status: submitting ? "SUBMITTED" : "DRAFT",
         submittedAt: submitting ? now : null,
       },
-      // A submitted report never goes back to draft. submittedAt is never overwritten here.
-      update: submitting ? { ...data, status: "SUBMITTED" } : data,
+      // Never touches status or submittedAt: a submitted report never goes back to draft, and re-saving never moves
+      // submittedAt, so it never extends the 48-hour window. A draft's first submission is the conditional update below.
+      update: data,
     });
 
   let report;
@@ -74,8 +76,12 @@ export async function POST(request: Request) {
       throw e;
     });
     if (submitting && !report.submittedAt) {
-      // First submission of an existing draft. The conditional update keeps the earliest time if submits race.
-      await prisma.dailyReport.updateMany({ where: { id: report.id, submittedAt: null }, data: { submittedAt: now } });
+      // First submission of an existing draft: status and submittedAt change in one write (a SUBMITTED row always has
+      // its submission time), and the condition keeps the earliest time if submits race.
+      await prisma.dailyReport.updateMany({
+        where: { id: report.id, submittedAt: null },
+        data: { status: "SUBMITTED", submittedAt: now },
+      });
       report = await prisma.dailyReport.findUniqueOrThrow({ where: { id: report.id } });
     }
   } catch (e) {

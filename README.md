@@ -11,7 +11,7 @@ Next.js route handlers are the backend; data lives in Neon PostgreSQL via Prisma
 | --- | --- |
 | `DATABASE_URL` | Neon connection string used by the app (pooled is fine) |
 | `DIRECT_URL` | Neon **direct** (non-`-pooler`) connection string used by Prisma Migrate |
-| `APP_TIMEZONE` | Business timezone for "today" and the 7-day edit window (default `Asia/Kolkata`) |
+| `APP_TIMEZONE` | Business timezone for "today" and the 7-day draft window (default `Asia/Kolkata`) |
 | `SEED_ADMIN_NAME` / `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | First admin account created by the seed |
 
 ```bash
@@ -56,7 +56,10 @@ re-seeding creates a *new* admin with that email — rename the existing one in 
 ## Rules worth knowing
 
 - One report per staff member per date — enforced by `UNIQUE(userId, reportDate)`; saves are upserts.
-- Staff can edit a report until `editableUntil = reportDate + 7 days` (checked server-side), and plan up to 7 days ahead.
+- A **submitted** report can be edited for exactly 48 hours from its first submission (`submittedAt + 48 h`, server
+  clock; editing never moves `submittedAt`), then it is read-only for staff. A **draft** can be edited and submitted
+  until `editableUntil = reportDate + 7 days`; drafts from other days keep their own date and are linked from the
+  planner. Both rules are checked server-side (`editLockReason` in `lib/reports.ts`). Staff can plan up to 7 days ahead.
 - Drafts autosave; submitted reports change only via **Update Daily Report**.
 - The planner is one printed A4 page, so rows are capped (enforced in the UI and the API, `ROW_LIMITS` in
   `lib/validations.ts`): Top Priorities 3, Communications 4 (Call / Email / Direct Meeting), Personal To Do 6,
